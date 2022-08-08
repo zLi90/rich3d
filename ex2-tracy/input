@@ -1,0 +1,64 @@
+// User inputs
+
+// Domain info
+nx = 80
+ny = 48
+nz = 64
+dx = 0.125
+dy = 0.125
+dz = 0.125
+dt_init = 1.0
+dt_max = 3600.0
+t_end = 90000
+t_itvl = 30000
+
+// Simulation control (for Newton's method)
+iter_solve = 1
+pcg_solve = 0
+iter_max = 20
+eps_min = 1e-3
+
+// Media and fluid properties
+kx = 1.019368e-11
+ky = 1.019368e-11
+kz = 1.019368e-11
+vga = 4.0
+vgn = 2.0
+phi = 0.35
+wcr = 0.016
+ss = 1e-5
+rho = 1e3
+mu = 1e-3
+
+// Initial conditions
+//  If init_file = 1 : read init-h from file
+//	Else if wc_init < phi : Use wc_init
+//	Else if wt_init < 0 : Use wt_init
+//	Else : use h_init
+init_file = 0
+h_init = -12.0
+wc_init = 1.0
+wt_init = 10.0
+ 
+// Boundary conditions
+// BC_type = 0 : no flux
+//			1	: Fixed head
+//			2	: Fixed flux
+//			3	: Fixed water table
+bc_type_xp = 1
+bc_val_xp = -12.0
+
+bc_type_xm = 1
+bc_val_xm = -12.0
+
+bc_type_yp = 1
+bc_val_yp = -12.0
+
+bc_type_ym = 1
+bc_val_ym = -12.0
+
+bc_type_zp = 1
+bc_val_zp = -12.0
+
+bc_type_zm = 1
+bc_val_zm = -3.0

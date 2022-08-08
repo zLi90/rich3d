@@ -1,0 +1,63 @@
+// User inputs
+
+// Domain info
+nx = 1
+ny = 1
+nz = 200
+dx = 1.0
+dy = 1.0
+dz = 0.005
+dt_init = 0.001
+dt_max = 5.0
+t_end = 46800.0
+t_itvl = 11700.0
+
+// Solution method 
+iter_solve = 0
+pcg_solve = 1
+iter_max = 50
+eps_min = 1e-3
+
+// Media and fluid properties
+kx = 0.0
+ky = 0.0
+kz = 2.945973496432e-13
+vga = 1.43
+vgn = 1.56
+phi = 0.33
+wcr = 0.0
+ss = 1e-5
+rho = 1e3
+mu = 1e-3
+
+// Initial conditions
+//	If wc_init < phi : Use wc_init
+//	Else if wt_init < 0 : Use wt_init
+//	Else : use h_init
+init_file = 0
+h_init = 0.0
+wc_init = 0.03
+wt_init = 1.0
+ 
+// Boundary conditions
+// BC_type = 0 : no flux
+//			1	: Fixed head
+//			2	: Fixed flux
+//			3	: Fixed water table
+bc_type_xp = 0
+bc_val_xp = 0.0
+
+bc_type_xm = 0
+bc_val_xm = 0.0
+
+bc_type_yp = 0
+bc_val_yp = 0.0
+
+bc_type_ym = 0
+bc_val_ym = 0.0
+
+bc_type_zp = 0
+bc_val_zp = 0.0
+
+bc_type_zm = 1
+bc_val_zm = 0.0
