@@ -1,20 +1,22 @@
 // User inputs
 
 // Domain info
-nx = 1
-ny = 1
-nz = 200
+nx = 100
+ny = 100
+nz = 100
 dx = 1.0
 dy = 1.0
-dz = 0.005
+dz = 0.01
 dt_init = 0.001
-dt_max = 5.0
+dt_max = 10.0
 t_end = 46800.0
 t_itvl = 11700.0
 
 // Solution method 
-iter_solve = 0
-pcg_solve = 1
+expl_solve = 0
+iter_solve = 1
+pcg_solve = 0
+precondition = 1
 iter_max = 50
 eps_min = 1e-3
 

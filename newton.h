@@ -249,8 +249,10 @@ public:
     		kzm = 0.5 * coef * kz * (krdh + kr(kM(idx),0));
     		if (kM(idx) >= ndom)	{
     			if (bctype_zm == 2)	{qzm = bcval_zm / dz;}
-    			else if (bctype_zm == 1 & hdh >= 0.0)	{
-    				kzm = coef*kz;
+    			else if (bctype_zm == 1 & h(kM(idx),1) >= 0.0)	{
+    			//else if (bctype_zm == 1)	{
+    				//kzm = coef*kz;
+    				kzm = coef * kz * kr(kM(idx),0);
     				qzm = (kzm * (hdh - h(kM(idx),1)) / (0.5*dz) - kzm) / dz;
     			}
     			else	{qzm = (kzm * (hdh - h(kM(idx),1)) / (0.5*dz) - kzm) / dz;}
@@ -301,8 +303,6 @@ public:
 	inline double get_eps(Config config)	{
 		double eps, eps_min;
 		Kokkos::parallel_reduce(config.ndom, Max_eps<dspace>(h, dh), eps);
-		//Kokkos::parallel_reduce(config.ndom, Min_eps<dspace>(h, dh), eps_min);
-		//return sqrt(eps) - (1e-5+1e-5*sqrt(eps_min));
 		return sqrt(eps)/config.ndom;
 	}
     template<class ExecutionSpace>
@@ -337,8 +337,6 @@ public:
    		KOKKOS_INLINE_FUNCTION void
 		operator() (const int idx, double& rdh_max) const	
 		{
-			//double rdh = fabs(dh(idx,0) / h(idx,1));
-			//double rdh = fabs(dh(idx,0));
 			double rdh = h(idx,1) * h(idx,1);
 			rdh_max = (rdh < rdh_max) ? rdh : rdh_max;
 		}

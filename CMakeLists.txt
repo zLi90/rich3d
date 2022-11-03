@@ -17,8 +17,8 @@ file(GLOB sources *.h *.hpp)
 
 add_executable(rich3d ${sources} rich3d.cpp)
 
-#set(OPENMP_LIBRARIES "/usr/lib/gcc/x86_64-linux-gnu/11/include")
-#set(OPENMP_INCLUDES "/usr/lib/gcc/x86_64-linux-gnu/11/include")
+set(OPENMP_LIBRARIES "/usr/lib/gcc/x86_64-linux-gnu/11/include")
+set(OPENMP_INCLUDES "/usr/lib/gcc/x86_64-linux-gnu/11/include")
 #find_package(OpenMP REQUIRED)
 #include_directories("${OPENMP_INCLUDES}")
 #link_directories("${OPENMP_LIBRARIES}")

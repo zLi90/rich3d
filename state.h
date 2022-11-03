@@ -11,6 +11,7 @@ public:
 	char finput[200];
 	// Initialization
 	inline void init(Config config)	{
+		double slope;
 		// state variables
 		h = dualDbl("h", config.nall, 2);
 		dh = dualDbl("dh", config.ndom, 1);
@@ -60,6 +61,16 @@ public:
 				h_h(idx,1) = (config.k3d(idx) - kwt) * config.dz;
 				h_wc(idx,1) = h2wc(h_h(idx,1), config);
 			}
+			#if TEST_BEEGUM
+			double zwt;
+			for (int ii = 0; ii < config.ndom; ii++)	{
+				slope = (config.bc_val_xp - config.bc_val_xm) / (config.nx * config.dx);
+				zwt = (config.i3d(ii)+0.5)*config.dx * slope + config.bc_val_xm;
+				h_h(ii,1) = (config.k3d(ii)+0.5)*config.dz - zwt;
+				if (h_h(ii,1) < -1.25)	{h_h(ii,1) = -1.25;}
+				h_wc(ii,1) = h2wc(h_h(ii,1), config);
+			}
+			#endif
 		}
 		else	{
 			for (int idx = 0; idx < config.ndom; idx++)	{
@@ -112,7 +123,8 @@ public:
 		//bc_type = 0 : no flow
 		//bc_type = 1 : uniform head
 		//bc_type = 2 : uniform flux
-		//bc_type = 3 : fixed water table
+		//bc_type = 3 : fixed water table (m from top boundary)
+		double z_cell;
 		dualDbl::t_host h_h = h.h_view;
 		dualDbl::t_host h_wc = wc.h_view;
 		for (int ii = 0; ii < config.nbcell; ii++)	{
@@ -127,15 +139,19 @@ public:
 					h_wc(config.bcell(ii,2),1) = h_wc(config.bcell(ii,1),1);
 					h_h(config.bcell(ii,2),1) = wc2h(h_wc(config.bcell(ii,2),1), config);	break;
 				case 3:
-					h_h(config.bcell(ii,2),1) = (config.k3d(config.bcell(ii,1)) - config.bcval(ii)) * config.dz;
-					// for Beegum Problem
+					z_cell = (config.k3d(config.bcell(ii,1)) + 0.5) * config.dz;
+					h_h(config.bcell(ii,2),1) = z_cell - config.bcval(ii);
+					#if TEST_BEEGUM
 					if (h_h(config.bcell(ii,2),1) < -1.25)	{h_h(config.bcell(ii,2),1) = -1.25;}
+					#endif
 					h_wc(config.bcell(ii,2),1) = h2wc(h_h(config.bcell(ii,2),1), config);	break;
 				default:
 					printf(" ERROR : BC_TYPE must be 0, 1, 2 or 3!\n");
 			}
 		
 		}
+		
+		
 		//#if TEST_TRACY
 		int idx;
 		double *htop = (double *) malloc(config.nx*config.ny*sizeof(double));
@@ -185,49 +201,8 @@ public:
 		Kokkos::parallel_for(config.ndom, KFace<dspace>(K, Kr, coef, config));
 		config.sync(K);
 		
-		dualDbl::t_host h_wc = wc.h_view;
-		dualDbl::t_host h_K = K.h_view;
-		for (int ii = 0; ii < config.nbcell; ii++)	{
-			idx = bmap(ii,1);
-			// x
-			if (bmap(ii,3) == -1)	{
-				idm = bmap(ii,2);
-				if (bmap(ii,0) == 0)	{h_K(idm,0) = 0.0;}
-				else	{h_K(idm,0) = get_kface(h_wc(idx,1), h_wc(idm,1), config.kx, config);}
-			}
-			else if (bmap(ii,3) == 1)	{
-				idp = bmap(ii,2);
-				if (bmap(ii,0) == 0)	{h_K(idx,0) = 0.0;}
-				else	{h_K(idx,0) = get_kface(h_wc(idx,1), h_wc(idp,1), config.kx, config);}
-			}
-			//y
-			if (bmap(ii,3) == -2)	{
-				idm = bmap(ii,2);
-				if (bmap(ii,0) == 0)	{h_K(idm,1) = 0.0;}
-				else	{h_K(idm,1) = get_kface(h_wc(idx,1), h_wc(idm,1), config.ky, config);}
-			}
-			else if (bmap(ii,3) == 2)	{
-				idp = bmap(ii,2);
-				if (bmap(ii,0) == 0)	{h_K(idx,1) = 0.0;}
-				else	{h_K(idx,1) = get_kface(h_wc(idx,1), h_wc(idp,1), config.ky, config);}
-			}
-			//z
-			if (bmap(ii,3) == -3)	{
-				idm = bmap(ii,2);
-				if (bmap(ii,0) == 0)	{h_K(idm,2) = 0.0;}
-				else	{h_K(idm,2) = get_kface(h_wc(idx,1), h_wc(idm,1), config.kz, config);}
-				// inundated top boundary
-				if (bmap(ii,0) == 1 & config.bc_val_zm >= 0.0)	{
-					h_K(idm,2) = config.rho * GRAV * config.kz / config.mu;
-				}
-			}
-			else if (bmap(ii,3) == 3)	{
-				idp = bmap(ii,2);
-				if (bmap(ii,0) == 0)	{h_K(idx,2) = 0.0;}
-				else	{h_K(idx,2) = get_kface(h_wc(idx,1), h_wc(idp,1), config.kz, config);}
-			}
-		}
-		K.modify<dualDbl::host_mirror_space> ();
+		Kokkos::parallel_for(config.nbcell, KBC<dspace>(K, Kr, config));
+		config.sync(K);
 	}
 	
 	
@@ -238,42 +213,8 @@ public:
 		double coef = config.rho * GRAV / config.mu;
 		Kokkos::parallel_for(config.ndom, Face_Flux<dspace>(q, K, h, config));
 		config.sync(q);
-		dualDbl::t_host h_h = h.h_view;
-		dualDbl::t_host h_K = K.h_view;
-		dualDbl::t_host h_q = q.h_view;
-		dualDbl::t_host h_wc = wc.h_view;
-		for (int ii = 0; ii < config.nbcell; ii++)	{
-			idx = config.bcell(ii,1);
-			idex = config.bcell(ii,2);
-			switch (config.bcell(ii,3))	{
-				case -1:
-					if (config.bcell(ii,0) == 2)	{h_q(idex,0) = config.bcval(ii);}
-					else	{
-						h_q(idex,0) = 2.0*h_K(idex,0)*(h_h(idx,1) - h_h(idex,1)) / config.dx;
-					}
-					break;
-				case 1:
-					if (config.bcell(ii,0) == 2)	{h_q(idx,0) = config.bcval(ii);}	
-					else {h_q(idx,0) = h_q(idx,0)*2.0;}	break;
-				case -2:
-					if (config.bcell(ii,0) == 2)	{h_q(idex,1) = config.bcval(ii);}
-					else	{h_q(idex,1) = 2.0*h_K(idex,1)*(h_h(idx,1) - h_h(idex,1)) / config.dy;}	break;
-				case 2:
-					if (config.bcell(ii,0) == 2)	{h_q(idx,1) = config.bcval(ii);}
-					else {h_q(idx,1) = h_q(idx,1)*2.0;}	break;
-				case -3:
-					if (config.bcell(ii,0) == 2)	{h_q(idex,2) = config.bcval(ii);}
-					else if (config.bcell(ii,0) == 1 & config.bcval(ii) >= 0.0)	{
-						h_q(idex,2) = coef*config.kz*(h_h(idx,1) - h_h(idex,1)) / (config.dz/2.0) - coef*config.kz;
-					}
-					else	{h_q(idex,2) = h_K(idex,2)*(h_h(idx,1) - h_h(idex,1)) / (config.dz/2.0) - h_K(idex,2);}
-					break;
-				case 3:
-					if (config.bcell(ii,0) == 2)	{h_q(idx,2) = config.bcval(ii);}	
-					else {h_q(idx,2) = h_K(idx,2)*(h_h(idex,1) - h_h(idx,1)) / (config.dz/2.0) - h_K(idx,2);}	break;
-			}
-		}
-		q.modify<dualDbl::host_mirror_space> ();
+		Kokkos::parallel_for(config.nbcell, FluxBC<dspace>(q, K, h, config));
+		config.sync(q);
 	}
 	
 	// Get water content from head
@@ -348,7 +289,7 @@ public:
     	dt_old = config.dt;
     	Kokkos::parallel_reduce(config.ndom, Max_dwc<dspace>(wc), dwc_max);
     	if (dwc_max > 0.02)	{config.dt = config.dt * 0.5;}
-    	else if (dwc_max > 0.0 & dwc_max < 0.01)	{config.dt = config.dt * 1.2;}
+    	else if (dwc_max > 0.0 & dwc_max < 0.01)	{config.dt = config.dt * 2.0;}
     	if (config.dt > config.dt_max)	{config.dt = config.dt_max;}
     	else if (config.dt < config.dt_init)	{config.dt = config.dt_init;}
     	if (config.dt != dt_old)	{
@@ -356,12 +297,27 @@ public:
     	}
     }
     
+    // Adjust dt based on Courant number
+    inline void dt_courant(Config &config)	{
+    	double dkdwc, dt_co, dt_old;
+    	dt_old = config.dt;
+    	Kokkos::parallel_reduce(config.ndom, DkDwc<dspace>(wc, config), dkdwc);
+    	dt_co = 2.0 * config.dz / dkdwc;
+    	if (config.dt > dt_co)	{config.dt = dt_co;}
+    	if (config.dt > config.dt_max)	{config.dt = config.dt_max;}
+    	else if (config.dt < config.dt_init)	{config.dt = config.dt_init;}
+    	
+    	if (config.dt != dt_old)	{
+    		printf("     >> dt_co = %f, dt is changed to %f sec\n",dt_co,config.dt);
+    	}
+    }
+    
     // Adjust dt based on the number of iterations
     inline void dt_iter(int iter, Config &config)	{
     	double dt_old;
     	dt_old = config.dt;
-    	if (iter < 5)	{config.dt = config.dt * 1.2;}
-    	else if (iter > 8)	{config.dt = config.dt * 0.75;}
+    	if (iter < 5)	{config.dt = config.dt * 2.0;}
+    	else if (iter > 8)	{config.dt = config.dt * 0.5;}
     	if (config.dt > config.dt_max)	{config.dt = config.dt_max;}
     	else if (config.dt < config.dt_init)	{config.dt = config.dt_init;}
     	if (config.dt != dt_old)	{
@@ -371,7 +327,9 @@ public:
     
     
     /*
+    	==================================
     	Parallel functions
+    	==================================
     */
     // get maximum change of water content
     template<class ExecutionSpace>
@@ -396,6 +354,40 @@ public:
     	KOKKOS_INLINE_FUNCTION void	init (double& dst) const	{dst = 0.0;}
     };
     
+    // get dt from Courant number
+    template<class ExecutionSpace>
+    struct DkDwc {
+    	typedef typename std::conditional<std::is_same<ExecutionSpace,Kokkos::DefaultExecutionSpace>::value, dualDbl::memory_space, dualDbl::host_mirror_space>::type ms;
+   		Kokkos::View<dualDbl::scalar_array_type, dualDbl::array_layout, ms> wc;
+   		double m, ks, wcs, wcr;
+   		DkDwc(dualDbl d_wc, Config config)	{
+   			wc = d_wc.template view<ms> ();	d_wc.sync<ms> ();
+   			wcs = config.phi; wcr = config.wcr; m = 1.0 - 1.0/config.vgn;
+   			ks = config.kz * config.rho * GRAV / config.mu;
+   		}
+   		
+   		KOKKOS_INLINE_FUNCTION void
+		operator() (const int idx, double& dkdwc_max) const	
+		{
+			double term0, term1, term2, s, dkdwc;
+			s = (wc(idx,1) - wcr) / (wcs - wcr);
+			if (s >= 1)	{dkdwc = 0.0;}
+			else	{
+				term0 = pow(1.0 - pow(s,1.0/m), m);
+				term1 = 0.5 * ks * pow(s,-0.5) * (1.0 - term0) * (1.0 - term0);
+        		term2 = 2.0 * ks * pow(s,(2.0-m)/(2.0*m)) * (1.0 - term0) * pow(1.0 - pow(s,1.0/m), m-1);
+        		dkdwc = fabs((term1 + term2) / (wcs - wcr));
+			}
+        	dkdwc_max = (dkdwc > dkdwc_max) ? dkdwc : dkdwc_max;
+		}
+
+		KOKKOS_INLINE_FUNCTION void
+		join (volatile double& dst, const volatile double& src) const	
+		{dst = (src > dst) ? src : dst;}
+    
+    	KOKKOS_INLINE_FUNCTION void	init (double& dst) const	{dst = 0.0;}
+    };
+    
     // Kernel for update primary variables
     template<class ExecutionSpace>
     struct Update {
@@ -411,7 +403,10 @@ public:
     	}
     };
     
+    // ---------------------------------
     // Kernel for computing conductivity
+    // ---------------------------------
+    
     template<class ExecutionSpace>
     struct KR {
     	typedef typename std::conditional<std::is_same<ExecutionSpace,Kokkos::DefaultExecutionSpace>::value, dualDbl::memory_space, dualDbl::host_mirror_space>::type ms;
@@ -456,8 +451,108 @@ public:
         	k(idx,2) = 0.5 * coef * kz * (kr(idx,0) + kr(kP(idx),0));
     	}
     };
+    template<class ExecutionSpace>
+    struct KBC {
+    	typedef ExecutionSpace execution_space;
+    	typedef typename std::conditional<std::is_same<ExecutionSpace,Kokkos::DefaultExecutionSpace>::value, dualDbl::memory_space, dualDbl::host_mirror_space>::type ms;
+		Kokkos::View<dualDbl::scalar_array_type, dualDbl::array_layout, ms> K;
+		Kokkos::View<dualDbl::scalar_array_type, dualDbl::array_layout, ms> Kr;
+		double kx, ky, kz, rho, mu, htop, coef, m, n, alpha;
+		IntArr iP, jP, kP, iM, jM, kM;
+		IntArr2 bmap;
+   		KBC(dualDbl d_k, dualDbl d_kr, Config config)	{
+   			K = d_k.template view<ms> ();	d_k.sync<ms> ();	d_k.modify<ms> ();
+   			Kr = d_kr.template view<ms> ();	d_kr.sync<ms> ();
+   			rho = config.rho; mu = config.mu;
+   			kx = config.kx;	ky = config.ky;	kz = config.kz;
+   			iP = config.iP;	jP = config.jP;	kP = config.kP;
+   			iM = config.iM;	jM = config.jM;	kM = config.kM;
+   			bmap = config.bcell;
+   			htop = config.bc_val_zm;
+   			coef = config.rho * GRAV / config.mu; 
+   		}
+    	KOKKOS_INLINE_FUNCTION	void operator() (const int ii) const {
+    		int idx, idm, idp;
+    		double kr1, kr2;
+			idx = bmap(ii,1);
+			
+			kr1 = Kr(idx,0);
+			
+			/*#if TEST_TRACY
+			kr1 = exp(0.1634 * h(idx,1));
+		    #else
+		    sbar = pow(1.0 + pow(fabs(alpha*h(idx,1)), n), -m);
+		    kr1 = pow(sbar,0.5) * pow(1-pow(1-pow(sbar,1.0/m),m), 2.0);
+		    #endif*/
+			
+			// x
+			if (kx != 0.0)	{
+				if (bmap(ii,3) == -1)	{
+					idm = bmap(ii,2);
+					if (bmap(ii,0) == 0)	{K(idm,0) = 0.0;}
+					else	{
+						kr2 = Kr(idm,0);
+						K(idm,0) = 0.5 * coef * kx * (kr1 + kr2);
+					}
+				}
+				else if (bmap(ii,3) == 1)	{
+					idp = bmap(ii,2);
+					if (bmap(ii,0) == 0)	{K(idx,0) = 0.0;}
+					else	{
+						kr2 = Kr(idp,0);
+						K(idx,0) = 0.5 * coef * kx * (kr1 + kr2);
+					}
+				}
+			}
+			
+			//y
+			if (ky != 0.0)	{
+				if (bmap(ii,3) == -2)	{
+					idm = bmap(ii,2);
+					if (bmap(ii,0) == 0)	{K(idm,1) = 0.0;}
+					else	{
+						kr2 = Kr(idm,0);
+						K(idm,1) = 0.5 * coef * ky * (kr1 + kr2);
+					}
+				}
+				else if (bmap(ii,3) == 2)	{
+					idp = bmap(ii,2);
+					if (bmap(ii,0) == 0)	{K(idx,1) = 0.0;}
+					else	{
+						kr2 = Kr(idp,0);
+						K(idx,1) = 0.5 * coef * ky * (kr1 + kr2);
+					}
+				}
+			}
+			
+			//z
+			if (bmap(ii,3) == -3)	{
+				idm = bmap(ii,2);
+				if (bmap(ii,0) == 0)	{K(idm,2) = 0.0;}
+				else	{
+					kr2 = Kr(idm,0);
+					K(idm,2) = 0.5 * coef * kz * (kr1 + kr2);
+				}
+				// inundated top boundary
+				if (bmap(ii,0) == 1 & htop >= 0.0)	{
+					K(idm,2) = rho * GRAV * kz / mu;
+				}
+			}
+			else if (bmap(ii,3) == 3)	{
+				idp = bmap(ii,2);
+				if (bmap(ii,0) == 0)	{K(idx,2) = 0.0;}
+				else	{
+					kr2 = Kr(idp,0);
+					K(idx,2) = 0.5 * coef * kz * (kr1 + kr2);
+				}
+			}
+    	}
+    };
     
+    // ---------------------------------
     // Kernel for computing flux
+    // ---------------------------------
+    
     template<class ExecutionSpace>
     struct Face_Flux {
     	typedef ExecutionSpace execution_space;
@@ -478,6 +573,61 @@ public:
     		q(idx,0) = k(idx,0) * (h(iP(idx),1) - h(idx,1)) / dx;
     		q(idx,1) = k(idx,1) * (h(jP(idx),1) - h(idx,1)) / dy;
     		q(idx,2) = k(idx,2) * (h(kP(idx),1) - h(idx,1)) / dz - k(idx,2);
+    	}
+    };
+    
+    template<class ExecutionSpace>
+    struct FluxBC {
+    	typedef ExecutionSpace execution_space;
+    	typedef typename std::conditional<std::is_same<ExecutionSpace,Kokkos::DefaultExecutionSpace>::value, dualDbl::memory_space, dualDbl::host_mirror_space>::type ms;
+		Kokkos::View<dualDbl::scalar_array_type, dualDbl::array_layout, ms> q;
+		Kokkos::View<dualDbl::scalar_array_type, dualDbl::array_layout, ms> K;
+		Kokkos::View<dualDbl::scalar_array_type, dualDbl::array_layout, ms> h;
+		double dx, dy, dz, kx, ky, kz, coef;
+		IntArr iP, jP, kP;
+		IntArr2 bcell;
+		DblArr bcval;
+   		FluxBC(dualDbl d_q, dualDbl d_k, dualDbl d_h, Config config)	{
+   			q = d_q.template view<ms> ();	d_q.sync<ms> ();	d_q.modify<ms> ();
+   			K = d_k.template view<ms> ();	d_k.sync<ms> ();
+   			h = d_h.template view<ms> ();	d_h.sync<ms> ();
+   			dx = config.dx;	dy = config.dy;	dz = config.dz;
+   			kx = config.kz; ky = config.ky; kz = config.kz;
+   			bcell = config.bcell;
+   			bcval = config.bcval;
+   			coef = config.rho * GRAV / config.mu;
+   		}
+    	KOKKOS_INLINE_FUNCTION	void operator() (const int ii) const {
+    		int idx, idex;
+    		idx = bcell(ii,1);
+			idex = bcell(ii,2);
+			switch (bcell(ii,3))	{
+				case -1:
+					if (bcell(ii,0) == 2)	{q(idex,0) = bcval(ii);}
+					else	{
+						q(idex,0) = 2.0*K(idex,0)*(h(idx,1) - h(idex,1)) / dx;
+					}
+					break;
+				case 1:
+					if (bcell(ii,0) == 2)	{q(idx,0) = bcval(ii);}	
+					else {q(idx,0) = q(idx,0)*2.0;}	break;
+				case -2:
+					if (bcell(ii,0) == 2)	{q(idex,1) = bcval(ii);}
+					else	{q(idex,1) = 2.0*K(idex,1)*(h(idx,1) - h(idex,1)) / dy;}	break;
+				case 2:
+					if (bcell(ii,0) == 2)	{q(idx,1) = bcval(ii);}
+					else {q(idx,1) = q(idx,1)*2.0;}	break;
+				case -3:
+					if (bcell(ii,0) == 2)	{q(idex,2) = bcval(ii);}
+					else if (bcell(ii,0) == 1 & bcval(ii) >= 0.0)	{
+						q(idex,2) = coef*kz*(h(idx,1) - h(idex,1)) / (dz/2.0) - coef*kz;
+					}
+					else	{q(idex,2) = K(idex,2)*(h(idx,1) - h(idex,1)) / (dz/2.0) - K(idex,2);}
+					break;
+				case 3:
+					if (bcell(ii,0) == 2)	{q(idx,2) = bcval(ii);}	
+					else {q(idx,2) = K(idx,2)*(h(idex,1) - h(idx,1)) / (dz/2.0) - K(idx,2);}	break;
+			}
     	}
     };
     

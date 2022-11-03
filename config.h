@@ -4,8 +4,11 @@
 #ifndef _CONFIG_H_
 #define _CONFIG_H_
 
+#include <algorithm>
 #include <math.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #include<stdio.h>
 #include<stdlib.h>
@@ -17,7 +20,11 @@
 #define GRAV 9.81
 
 #ifndef TEST_TRACY
-#define TEST_TRACY 0
+#define TEST_TRACY 1
+#endif
+
+#ifndef TEST_BEEGUM
+#define TEST_BEEGUM 0
 #endif
 
 #ifdef __NVCC__
@@ -42,7 +49,7 @@ class Config {
 
 public:
 	// solver
-	int iter_solve, pcg_solve;
+	int iter_solve, pcg_solve, niter_solver, exp_solve, precondition;
     // Domain info
     int nx, ny, nz, nt, nall, ndom, nbcell, init_file;
     double dx, dy, dz, dt, t_end, t_itvl, dt_max, dt_init;
@@ -57,7 +64,7 @@ public:
     DblArr bcval;
     IntArr2 bcell;
     // Simulation control
-    char *fdir;
+    char *fdir, *fout;
     char finput[200];
     int iter_max;
     double eps_min;
@@ -93,7 +100,8 @@ public:
 		double x, y, z;
 		// generate output file name
 		sprintf(t_str, "%d", t_ind);
-		strcpy(filename, config.fdir);
+		//strcpy(filename, config.fdir);
+		strcpy(filename, config.fout);
 		strcat(filename, fieldname);
 		strcat(filename, t_str);
 		// write data 
@@ -108,6 +116,36 @@ public:
 		}
 		fclose(fid);
 	}
+	
+	// >>>>> Write point monitoring results <<<<<
+	inline void write_monitor(double val, char *fieldname, Config config)	{
+		FILE *fp;		
+		char filename[100];
+		strcpy(filename, config.fout);
+		strcat(filename, fieldname);
+		if (exist(filename))    {fp = fopen(filename, "a");}
+		else    {fp = fopen(filename, "w");}
+		fprintf(fp, "%8.8f \n", val);
+		fclose(fp);
+	}
+	
+	inline void write_monitor3(double val1, double val2, double val3, char *fieldname, Config config)	{
+		FILE *fp;		
+		char filename[100];
+		strcpy(filename, config.fout);
+		strcat(filename, fieldname);
+		if (exist(filename))    {fp = fopen(filename, "a");}
+		else    {fp = fopen(filename, "w");}
+		fprintf(fp, "%8.8f %8.8f %8.8f\n", val1, val2, val3);
+		fclose(fp);
+	}
+	
+	inline int exist(char *fname)	{
+		FILE *fid;
+		if ((fid = fopen(fname, "r")))
+		{fclose(fid);   return 1;}
+		return 0;
+	}
 
 	// Setting up model parameters and connection map
     inline void init(const char inFile[]) {
@@ -117,6 +155,10 @@ public:
 		strcat(finput, inFile);
 		iter_solve = (int) read_one_input("iter_solve", finput);
 		pcg_solve = (int) read_one_input("pcg_solve", finput);
+		exp_solve = (int) read_one_input("expl_solve", finput);
+		precondition = (int) read_one_input("precondition", finput);
+		// Build output directory
+		mkdir(fout, 0777);
 		// Domain information
 		nx = (int) read_one_input("nx", finput);
 		ny = (int) read_one_input("ny", finput);

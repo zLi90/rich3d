@@ -8,13 +8,15 @@ dx = 0.125
 dy = 0.125
 dz = 0.125
 dt_init = 1.0
-dt_max = 3600.0
-t_end = 90000
-t_itvl = 30000
+dt_max = 600.0
+t_end = 21600
+t_itvl = 21600
 
 // Simulation control (for Newton's method)
+expl_solve = 0
 iter_solve = 1
 pcg_solve = 0
+precondition = 1
 iter_max = 20
 eps_min = 1e-3
 

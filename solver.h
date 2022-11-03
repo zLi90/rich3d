@@ -25,6 +25,7 @@ public:
 		nrow = A.nrow;	nnz = A.nnz;
 		iter_max = 40;
 		gsteps = 40;
+		if (config.iter_solve == 0)	{iter_max = iter_max * gsteps;}
 		eps_min = 1e-7;
 		if (config.pcg_solve == 1)	{v = dualDbl("v", nrow, 1);}
 		else	{v = dualDbl("v", nrow, gsteps+2);}
@@ -56,20 +57,76 @@ public:
 	*/
 	
 	/*
+    	Jacobi Preconditioner
+    */
+    void precJACO(Matrix A, dualDbl res, dualDbl c, int col, Config config)	{ 	
+    	int nrow = A.nrow;	
+    	Kokkos::parallel_for(nrow, Div_VV(res, c, A.diagN, col, col));
+    	sync1(res);
+    }
+	
+	/*
     	Approximate SSOR Preconditioner
     */
-    void precSSOR(Matrix A, Matrix K, dualDbl res, dualDbl c, double omega)	{ 	
-    	Kokkos::parallel_for(nrow, Reset(res));
-    	
-		Kokkos::parallel_for(nrow, Mul_MV(tmp14, K, c));
-		Kokkos::parallel_for(nnz, Swap_VV(K.valT, K.val));
-    	Kokkos::parallel_for(nrow, Swap_VVI(K.ptrT, K.ptr));
-    	Kokkos::parallel_for(nnz, Swap_VVI(K.indT, K.ind));
-    	
-		Kokkos::parallel_for(nrow, Mul_MV(res, K, tmp14));
-		Kokkos::parallel_for(nnz, Swap_VV(K.val, K.valT));
-    	Kokkos::parallel_for(nrow, Swap_VVI(K.ptr, K.ptrT));
-    	Kokkos::parallel_for(nnz, Swap_VVI(K.ind, K.indT));
+    void precSSOR(Matrix A, Matrix K, dualDbl res, dualDbl c, double omega, Config config)	{ 
+    	int nrow = A.nrow;	
+    	Kokkos::parallel_for(nrow, Reset(res, 0));
+    	Kokkos::parallel_for(nrow, ApproxK(K.val, A, omega));
+    	sync1(K.val);
+    	K.decompose(config);
+    	Kokkos::parallel_for(nrow, Mul_MM(K.val, K.ptr, K.ind, K.ut, K.lt));
+    	sync1(K.val);
+    	Kokkos::parallel_for(nrow, Mul_MV(res, 0, K, c, 0));
+    	sync1(res);
+    }
+    
+    /*
+    	CG Solver
+    */
+    int cg(Matrix A, Matrix K, Config config)	{ 
+		double norm, rho, rhoOld, deno, alpha, beta, omega = 0.9;
+		rhoOld = 0.0;
+		// initialize residual
+		Kokkos::parallel_for(nrow, Residual(v, A, A.x, A.rhs));
+		//config.sync(v);
+		iter = 0;	eps = 1.0;
+		// preconditioning
+		/*if (config.precondition != 0)	{
+			// get K and transpose(K), assume K is symmetric
+			Kokkos::parallel_for(nrow, ApproxK(K.val, A, omega));
+			Kokkos::parallel_for(nrow+1, Copy_VVI(A.ptr, K.ptr));
+			Kokkos::parallel_for(nnz, Copy_VVI(A.ind, K.ind));
+			synci(K.ptr);	synci(K.ind);	sync1(K.val);
+		}*/
+		
+		while (iter < iter_max & eps > eps_min)	{
+			// Precondition
+			if (config.precondition == 1)	{precJACO(A, z, v, 0, config);}
+			//else if (config.precondition == 2)	{precSSOR(A, K, z, v, omega, config);}
+			else	{Kokkos::parallel_for(nrow, Copy_VV(v, 0, z, 0));}
+    		Kokkos::parallel_reduce(nrow, Mul_VV(v, z, 0, 0), rho);
+    		if (iter == 0)	{
+    			beta = 0.0;
+    			Kokkos::parallel_for(nrow, Copy_VV(z, 0, p, 0));
+			}
+    		else 	{
+    			beta = rho / rhoOld;
+    			Kokkos::parallel_for(nrow, KXPY(p, 0, beta, p, 0, 1.0, z, 0));
+    		}
+    		Kokkos::parallel_for(nrow, Mul_MV(q, 0, A, p, 0));
+    		Kokkos::parallel_reduce(nrow, Mul_VV(q, p, 0, 0), deno);
+    		alpha = rho / deno;
+    		Kokkos::parallel_for(nrow, Update_X(A.x, alpha, p, 0));
+    		config.sync(A.x);
+    		Kokkos::parallel_for(nrow, KXPY(v, 0, -alpha, q, 0, 1.0, v, 0));
+    		rhoOld = rho;
+    		Kokkos::parallel_reduce(nrow, Mul_VV(v, v, 0, 0), norm);
+			eps = pow(norm, 0.5);
+    		iter += 1;
+    	}
+    	config.niter_solver = iter;
+    	printf("       >> CG completed with iter=%d, eps=%f\n",iter,eps);
+    	return iter;
     }
     
     /*
@@ -82,49 +139,41 @@ public:
 		for (ii = 0; ii < gsteps+2; ii++)	{
 			reset(v, ii);
 			Kokkos::parallel_for(gsteps+1, Reset(h, ii));
-			config.sync(v); config.sync(h); 
 		}	
 		Kokkos::parallel_for(gsteps+1, Reset(s, 0));
 		Kokkos::parallel_for(gsteps+1, Reset(y, 0));
 		Kokkos::parallel_for(gsteps+1, Reset(c1, 0));
 		Kokkos::parallel_for(gsteps+1, Reset(c2, 0));
-		config.sync(s); config.sync(y); config.sync(c1); config.sync(c2);
 		
 		// initialize residual
 		Kokkos::parallel_for(nrow, Residual(v, A, A.x, A.rhs));
-		config.sync(v);
 		iter = 0;	eps = 1.0;
 		while (iter < iter_max & eps > eps_min)	{
-			//precILU(A, v, v);	sync(v);
+			if (config.precondition == 1)	{precJACO(A, v, v, 0, config);}
 			Kokkos::parallel_reduce(nrow, Mul_VV(v, v, 0, 0), norm);
 			Kokkos::parallel_for(1, Update_V(s, pow(norm,0.5), 0, 0));
 			Kokkos::parallel_for(nrow, KXPY(v, 0, 1/pow(norm,0.5), v, 0, 0.0, v, 0));
-			config.sync(v);	config.sync(s);
 			ii = 0; eps = 1.0;
 			while (ii < gsteps & eps > eps_min)	{
 				Kokkos::parallel_for(nrow, Mul_MV(v, ii+1, A, v, ii));
-				//config.sync(v);
+				if (config.precondition == 1)	{precJACO(A, v, v, ii+1, config);}
 				for (kk = 0; kk < ii+1; kk++)	{
 					Kokkos::parallel_reduce(nrow, Mul_VV(v, v, kk, ii+1), norm);
 					Kokkos::parallel_for(1, Update_V(h, norm, ii, kk));
-					Kokkos::parallel_for(nrow, KXPY(v, ii+1, -norm, v, kk, 1.0, v, ii+1));
-					//Kokkos::parallel_for(nrow, KXPY(v, kk, norm, v, ii+1, v, kk)); 
-					
+					Kokkos::parallel_for(nrow, KXPY(v, ii+1, -norm, v, kk, 1.0, v, ii+1));	
 				}
-				//config.sync(v);	config.sync(h);
 				Kokkos::parallel_reduce(nrow, Mul_VV(v, v, ii+1, ii+1), norm);
 				Kokkos::parallel_for(1, Update_V(h, pow(norm, 0.5), ii, ii+1));
 				Kokkos::parallel_for(nrow, KXPY(v, ii+1, 1.0/pow(norm, 0.5), v, ii+1, 0.0, v, ii+1));
-				config.sync(v);
 				Kokkos::parallel_for(1, Update_S(h, s, c1, c2, ii)); 
-				config.sync(s);	config.sync(h);	config.sync(c1);	config.sync(c2);
+				config.sync(s);	
 				ii += 1;
 				iter_tot += 1;
 				dualDbl::t_host h_s = s.h_view;
 				eps = fabs(h_s(ii,0));
 			}
 			Kokkos::parallel_for(1, Update_Y(h, s, y, ii));
-			config.sync(s);	config.sync(y);
+			config.sync(y);
 			// update solution
 			dualDbl::t_host h_y = y.h_view;
 			for (jj = ii-1; jj >= 0; jj--)	{
@@ -133,77 +182,17 @@ public:
 			A.x.sync<dualDbl::host_mirror_space> (); 
 			// update residual
 			Kokkos::parallel_for(nrow, Residual(v, A, A.x, A.rhs));
-			config.sync(v);	
 			Kokkos::parallel_reduce(nrow, Mul_VV(v, v, 0, 0), norm); 
 			eps = pow(norm, 0.5);
 			iter += 1;
 		}
+		config.niter_solver = iter_tot;
     	printf("        >>> GMRES completed with iter=%d, eps=%f\n",iter_tot,eps);
     	return iter_tot;
     }
     
     
-    /*
-    	CG Solver
-    */
-    void cg(Matrix A, Matrix K, Config config)	{ 
-		double norm, rho, rhoOld, deno, alpha, beta, omega = 1.0;
-		rhoOld = 0.0;
-		// initialize residual
-		//Kokkos::parallel_for(nrow, Copy_VVI(A.ptr, K.ptr));
-    	//Kokkos::parallel_for(nnz, Copy_VVI(A.ind, K.ind));
-    	
-		Kokkos::parallel_for(nrow, Residual(v, A, A.x, A.rhs));
-		config.sync(v);
-		
-		/*config.printi_view(A.ptr, 10, 0);
-		config.printi_view(A.ind, 10, 0);
-		config.print_view(A.val, 10, 0);
-		config.print_view(A.rhs, 10, 0);
-		 config.print_view(v, 10, 0);*/
-		iter = 0;	eps = 1.0;
-		// preconditioning
-		/*Kokkos::parallel_for(nrow, ImLD(tmp12, A, omega));	sync1(tmp12);
-    	Kokkos::parallel_for(nnz, Scal_M(tmp11, A.diag, omega));	sync1(tmp11);
-    	Kokkos::parallel_for(nrow, Mul_MM(tmp13, A.ptr, A.ind, tmp11, tmp12, omega));
-    	sync1(tmp13);
-    	Kokkos::parallel_for(nrow, Copy_VVI(A.ptr, K.ptr));
-    	Kokkos::parallel_for(nnz, Copy_VVI(A.ind, K.ind));
-    	Kokkos::parallel_for(nnz, Copy_VV(tmp13, K.val));
-    	synci(K.ptr);	synci(K.ind);	sync1(K.val);
-		K.transpose();*/
-		
-		while (iter < iter_max & eps > eps_min)	{
-			//precSSOR(A, K, z, v, omega);
-			Kokkos::parallel_for(nrow, Copy_VV(v, 0, z, 0));
-			config.sync(z);
-    		Kokkos::parallel_reduce(nrow, Mul_VV(v, z, 0, 0), rho);
-    		if (iter == 0)	{
-    			beta = 0.0;
-    			Kokkos::parallel_for(nrow, Copy_VV(z, 0, p, 0));
-			}
-    		else 	{
-    			beta = rho / rhoOld;
-    			Kokkos::parallel_for(nrow, KXPY(p, 0, beta, p, 0, 1.0, z, 0));
-    		}
-    		config.sync(p);
-    		Kokkos::parallel_for(nrow, Mul_MV(q, 0, A, p, 0));
-    		config.sync(q);
-    		Kokkos::parallel_reduce(nrow, Mul_VV(q, p, 0, 0), deno);
-    		alpha = rho / deno;
-    		Kokkos::parallel_for(nrow, Update_X(A.x, alpha, p, 0));
-    		config.sync(A.x);
-    		//A.x.sync<dualDbl::host_mirror_space> ();
-    		Kokkos::parallel_for(nrow, KXPY(v, 0, -alpha, q, 0, 1.0, v, 0));
-    		config.sync(v);
-    		rhoOld = rho;
-    		Kokkos::parallel_reduce(nrow, Mul_VV(v, v, 0, 0), norm);
-			eps = pow(norm, 0.5);
-    		iter += 1;
-    	}
-    	
-    	printf("       >> CG completed with iter=%d, eps=%f\n",iter,eps);
-    }
+    
     
     /*
 		----------------------------------------------------------
@@ -249,6 +238,22 @@ public:
 		join (volatile double& dst, const volatile double& src) const	{dst += src;}
     
     	KOKKOS_INLINE_FUNCTION void	init (double& dst) const	{dst = 0.0;}
+    };
+    
+    struct Div_VV {
+   		Kokkos::View<dualDbl::scalar_array_type, dualDbl::array_layout, ms> vec1;
+   		Kokkos::View<dualDbl::scalar_array_type, dualDbl::array_layout, ms> vec2;
+   		Kokkos::View<dualDbl::scalar_array_type, dualDbl::array_layout, ms> res;
+   		int j1, j2;
+   		Div_VV(dualDbl d_res, dualDbl d_vec1, dualDbl d_vec2, int col1, int col2)	{
+   			vec1 = d_vec1.template view<ms> ();	d_vec1.sync<ms> ();
+   			vec2 = d_vec2.template view<ms> ();	d_vec2.sync<ms> ();
+   			res = d_res.template view<ms> ();	d_res.sync<ms> ();	d_res.modify<ms> ();
+   			j1 = col1;	j2 = col2;
+   		}
+   		KOKKOS_INLINE_FUNCTION	void operator() (const int idx) const {
+    		res(idx,j1) = vec1(idx,j2) / vec2(idx,0);
+    	}
     };
     
     // Matrix-Vector Multiplication
@@ -340,29 +345,40 @@ public:
     	}
     };
     
-    
-   
-    struct ImLD {
+    struct ApproxK {
     	Kokkos::View<dualInt::scalar_array_type, dualInt::array_layout, msi> ptr;
     	Kokkos::View<dualInt::scalar_array_type, dualInt::array_layout, msi> ind;
-        Kokkos::View<dualDbl::scalar_array_type, dualDbl::array_layout, ms> lotr;
    		Kokkos::View<dualDbl::scalar_array_type, dualDbl::array_layout, ms> diag;
+   		Kokkos::View<dualDbl::scalar_array_type, dualDbl::array_layout, ms> diagN;
 		Kokkos::View<dualDbl::scalar_array_type, dualDbl::array_layout, ms> res;
    		double w;
-   		ImLD(dualDbl d_res, Matrix A, double omega)	{
+   		ApproxK(dualDbl d_res, Matrix A, double omega)	{
    			dualInt d_ptr = A.ptr;	dualInt d_ind = A.ind;
-   			dualDbl d_lotr = A.diag;	dualDbl d_diag = A.diagN;
+   			dualDbl d_diag = A.diag;	dualDbl d_diagN = A.diagN;
    			ptr = d_ptr.template view<msi> ();	d_ptr.sync<msi> ();	
    			ind = d_ind.template view<msi> ();	d_ind.sync<msi> ();	
-   			lotr = d_lotr.template view<ms> ();	d_lotr.sync<ms> ();
    			diag = d_diag.template view<ms> ();	d_diag.sync<ms> ();
+   			diagN = d_diagN.template view<ms> ();	d_diagN.sync<ms> ();
    			res = d_res.template view<ms> ();	d_res.sync<ms> ();	d_res.modify<ms> ();
 			w = omega;
    		}
     	KOKKOS_INLINE_FUNCTION	void operator() (const int idx) const {
-    		for (int icol = ptr(idx,0); icol < ptr(idx+1,0); icol++)	{
-    			res(icol,0) = - lotr(icol,1) * w / diag(ind(icol,0),0);
-    			if (ind(icol,0) == idx)	{res(icol,0) += 1.0;}
+    		int irow, jcol;
+    		for (int kk = ptr(idx,0); kk < ptr(idx+1,0); kk++)	{
+    			jcol = ind(kk,0);
+    			irow = idx;
+    			if (jcol == irow)	{
+    				res(kk,0) = sqrt(2.0-w) * sqrt(w/diagN(irow,0)) * 
+    					(1.0 - w*diag(kk,0)/diagN(irow,0));
+    			}
+    			else if (jcol < irow)	{
+    				res(kk,0) = -sqrt(2.0-w) * sqrt(w/diagN(irow,0)) * 
+    					w*diag(kk,1)/diagN(jcol,0);
+    			}
+    			else	{
+    				res(kk,0) = -sqrt(2.0-w) * sqrt(w/diagN(irow,0)) * 
+    					w*diag(kk,2)/diagN(jcol,0);
+    			}
     		}
     	}
     };
@@ -390,14 +406,12 @@ public:
         Kokkos::View<dualDbl::scalar_array_type, dualDbl::array_layout, ms> m1;
    		Kokkos::View<dualDbl::scalar_array_type, dualDbl::array_layout, ms> m2;
 		Kokkos::View<dualDbl::scalar_array_type, dualDbl::array_layout, ms> res;
-   		double w;
-   		Mul_MM(dualDbl d_res, dualInt d_ptr, dualInt d_ind, dualDbl d_m1, dualDbl d_m2, double omega)	{
+   		Mul_MM(dualDbl d_res, dualInt d_ptr, dualInt d_ind, dualDbl d_m1, dualDbl d_m2)	{
    			ptr = d_ptr.template view<msi> ();	d_ptr.sync<msi> ();	
    			ind = d_ind.template view<msi> ();	d_ind.sync<msi> ();	
    			m1 = d_m1.template view<ms> ();	d_m1.sync<ms> ();
    			m2 = d_m2.template view<ms> ();	d_m2.sync<ms> ();
    			res = d_res.template view<ms> ();	d_res.sync<ms> ();	d_res.modify<ms> ();
-			w = omega;
    		}
     	KOKKOS_INLINE_FUNCTION	void operator() (const int idx) const {
     		double diag = 0.0;
@@ -410,25 +424,6 @@ public:
     	}
     };
     
-    struct Mul_MMT	{
-    	Kokkos::View<dualInt::scalar_array_type, dualInt::array_layout, msi> ptr;
-    	Kokkos::View<dualInt::scalar_array_type, dualInt::array_layout, msi> ind;
-        Kokkos::View<dualDbl::scalar_array_type, dualDbl::array_layout, ms> vec1;
-   		Kokkos::View<dualDbl::scalar_array_type, dualDbl::array_layout, ms> vec2;
-		Kokkos::View<dualDbl::scalar_array_type, dualDbl::array_layout, ms> res;
-   		Mul_MMT(dualDbl d_res, dualInt d_ptr, dualInt d_ind, dualDbl d_vec1, dualDbl d_vec2)	{
-   			ptr = d_ptr.template view<msi> ();	d_ptr.sync<msi> ();	
-   			ind = d_ind.template view<msi> ();	d_ind.sync<msi> ();	
-   			vec1 = d_vec1.template view<ms> ();	d_vec1.sync<ms> ();
-   			vec2 = d_vec2.template view<ms> ();	d_vec2.sync<ms> ();
-   			res = d_res.template view<ms> ();	d_res.sync<ms> ();	d_res.modify<ms> ();
-   		}
-    	KOKKOS_INLINE_FUNCTION	void operator() (const int idx) const {
-    		for (int ii = ptr(idx,0); ii < ptr(idx+1,0); ii++)	{
-    			res(idx,0) += vec1(ii,0) * vec2(ii,0);
-    		}
-    	}
-    };
    
     // Copy view
     struct Copy_VV {

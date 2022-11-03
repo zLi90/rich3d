@@ -22,57 +22,12 @@ public:
 		int icol, iflux, idx;
 		Kokkos::parallel_for(config.ndom, MatCoef<dspace>(matcoef, h, wc, K, config));
 		config.sync(matcoef);
-		dualDbl::t_host h_h = h.h_view;
-		dualDbl::t_host h_k = K.h_view;
-		dualDbl::t_host h_coef = matcoef.h_view;
 		
-		dualDbl::t_host h_wc = wc.h_view;
-		dualDbl::t_host h_q = q.h_view;
-		// adjust boundaries
-		for (int ii = 0; ii < config.nbcell; ii++)	{
-			idx = config.bcell(ii,1);
-			switch (config.bcell(ii,3))	{
-				case -1:	icol = 2;	break;
-				case  1:	icol = 1;	break;
-				case -2:	icol = 4;	break;
-				case  2:	icol = 3;	break;
-				case -3:	icol = 6;	break;
-				case  3:	icol = 5;	break;
-				default:	printf(" ERROR : Invalid bc axis!\n");
-			}
-			h_coef(idx,icol) = h_coef(idx,icol) * 2.0;	
-			h_coef(idx,7) += h_coef(idx,icol) * h_h(config.bcell(ii,2),1);
-			
-			/*if (config.i3d(idx)==0 & config.j3d(idx)==0 & config.k3d(idx)==0&icol==6)	{
-				printf(" h=%f, wc=%f, q=(%f,%f)\n",h_h(idx,1),h_wc(idx,1),1e10*h_q(idx,2),1e10*h_q(config.bcell(ii,2),2));
-				//printf(" (%d,%d,%d,%d) : h_coef=%f, hh=%f \n",config.bcell(ii,0),config.bcell(ii,1),
-					//config.bcell(ii,2),config.bcell(ii,3),1e5*h_coef(idx,icol),h_h(config.bcell(ii,2),1));
-			
-			}*/
-		}
-		for (int ii = 0; ii < config.ndom; ii++)	{
-			h_coef(ii,0) -= (h_coef(ii,1)+h_coef(ii,2)+h_coef(ii,3)+h_coef(ii,4)+h_coef(ii,5)+h_coef(ii,6));
-		}
+		Kokkos::parallel_for(config.nbcell, DirchBC<dspace>(matcoef, h, config));
+		config.sync(matcoef);
 		
-		// flux boundary condition
-		for (int ii = 0; ii < config.nbcell; ii++)	{
-			if (config.bcell(ii,0) == 2)	{
-				idx = config.bcell(ii,1);
-				switch (config.bcell(ii,3))	{
-					case -1:	icol = 2;	iflux = 0;	break;
-					case  1:	icol = 1;	iflux = 0;	break;
-					case -2:	icol = 4;	iflux = 1;	break;
-					case  2:	icol = 3;	iflux = 1;	break;
-					case -3:	icol = 6;	iflux = 2;	break;
-					case  3:	icol = 5;	iflux = 3;	break;
-					default:	printf(" ERROR : Invalid bc axis!\n");
-				}
-				h_coef(idx,0) += h_coef(idx,icol);
-				h_coef(idx,7) -= h_coef(idx,icol) * h_h(config.bcell(ii,2),1);
-				h_coef(idx,7) -= config.dt * (config.bcval(ii) - h_k(config.kM(idx),iflux)) / config.dz;
-			}
-		}
-		matcoef.modify<dualDbl::host_mirror_space> ();
+		Kokkos::parallel_for(config.ndom, getDiag<dspace>(matcoef));
+		config.sync(matcoef);
 	}
 	// Kernel for computing matrix coefficients
     template<class ExecutionSpace>
@@ -114,6 +69,50 @@ public:
     		coef(idx,5) = - dt * k(idx,2) / pow(dz, 2.0);
     		coef(idx,6) = - dt * k(kM(idx),2) / pow(dz, 2.0);
     		coef(idx,7) = (ch + ss*wc(idx,1)/wcs)*h_h - dt*(k(idx,2) - k(kM(idx),2)) / dz;
+    	}
+    };
+    
+    // Adjust head bc
+    template<class ExecutionSpace>
+    struct DirchBC {
+    	typedef ExecutionSpace execution_space;
+    	typedef typename std::conditional<std::is_same<ExecutionSpace,Kokkos::DefaultExecutionSpace>::value, dualDbl::memory_space, dualDbl::host_mirror_space>::type ms;
+		Kokkos::View<dualDbl::scalar_array_type, dualDbl::array_layout, ms> coef;
+		Kokkos::View<dualDbl::scalar_array_type, dualDbl::array_layout, ms> h;
+		IntArr2 bcell;
+   		DirchBC(dualDbl d_coef, dualDbl d_h, Config config)	{
+   			coef = d_coef.template view<ms> ();	d_coef.sync<ms> ();	d_coef.modify<ms> ();
+   			h = d_h.template view<ms> ();	d_h.sync<ms> ();
+			bcell = config.bcell;
+   		}
+    	KOKKOS_INLINE_FUNCTION	void operator() (const int ii) const {
+    		int icol, idx;
+    		idx = bcell(ii,1);
+			switch (bcell(ii,3))	{
+				case -1:	icol = 2;	break;
+				case  1:	icol = 1;	break;
+				case -2:	icol = 4;	break;
+				case  2:	icol = 3;	break;
+				case -3:	icol = 6;	break;
+				case  3:	icol = 5;	break;
+				default:	printf(" ERROR : Invalid bc axis!\n");
+			}
+			coef(idx,icol) = coef(idx,icol) * 2.0;	
+			coef(idx,7) += coef(idx,icol) * h(bcell(ii,2),1);
+    	}
+    };
+    
+    // Get diagonal elements
+    template<class ExecutionSpace>
+    struct getDiag {
+    	typedef ExecutionSpace execution_space;
+    	typedef typename std::conditional<std::is_same<ExecutionSpace,Kokkos::DefaultExecutionSpace>::value, dualDbl::memory_space, dualDbl::host_mirror_space>::type ms;
+		Kokkos::View<dualDbl::scalar_array_type, dualDbl::array_layout, ms> coef;
+   		getDiag(dualDbl d_coef)	{
+   			coef = d_coef.template view<ms> ();	d_coef.sync<ms> ();	d_coef.modify<ms> ();
+   		}
+    	KOKKOS_INLINE_FUNCTION	void operator() (const int ii) const {
+    		coef(ii,0) -= (coef(ii,1)+coef(ii,2)+coef(ii,3)+coef(ii,4)+coef(ii,5)+coef(ii,6));
     	}
     };
     
@@ -216,18 +215,19 @@ public:
     			wc(idx,1) = sbar * (wcs - wcr) + wcr;
     		}
     		else {
-    			if (wc(idx,1) <= wcr)	{wc(idx,1) = wcr + 0.01;}
+    			/*if (wc(idx,1) <= wcr)	{wc(idx,1) = wcr + 0.01;}
     			else if (wc(idx,1) >= wcs)	{h(idx,1) = 0.0;}
     			else {
-    				#if TEST_TRACY
-					h(idx,1) = log((wc(idx,1) - wcr)/(wcs - wcr)) / 0.1634;
-					#else
-					h(idx,1) = -(1.0/alpha) * (pow(pow((wcs-wcr)/(wc(idx,1)-wcr),(1/m)) - 1.0, 1/n));
-					#endif
-    			}
+    				
+    			}*/
+    			#if TEST_TRACY
+				h(idx,1) = log((wc(idx,1) - wcr)/(wcs - wcr)) / 0.1634;
+				#else
+				h(idx,1) = -(1.0/alpha) * (pow(pow((wcs-wcr)/(wc(idx,1)-wcr),(1/m)) - 1.0, 1/n));
+				#endif
     		}
     		if (wc(idx,1) > wcs)	{wc(idx,1) = wcs;}
-    		else if (wc(idx,1) < wcr+0.01)	{wc(idx,1) = wcr+0.01;}
+    		else if (wc(idx,1) < wcr+0.001)	{wc(idx,1) = wcr+0.001;}
     	}
     };
     

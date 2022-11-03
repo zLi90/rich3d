@@ -12,7 +12,7 @@ class Matrix {
 public:
 	int nrow, ncol, nnz, nx, ny, nz;
 	dualInt ptr, ind, ptrT, indT;
-	dualDbl val, diag, diagN, rhs, x, valT;
+	dualDbl val, diag, diagN, rhs, x, valT, lt, ut;
 	// initialize 
 	Matrix(Config config)	{
 		int ndom = config.ndom;
@@ -36,7 +36,8 @@ public:
 		ptr = dualInt("ptr", nrow+1, 1);	ind = dualInt("ind", nnz, 1);
 		val = dualDbl("val", nnz, 1);		diag = dualDbl("diag", nnz, 3);
 		rhs = dualDbl("rhs", nrow, 1);		x = dualDbl("x", nrow, 1);
-		diagN = dualDbl("diagN", nrow, 1);
+		diagN = dualDbl("diagN", nrow, 1);	ut = dualDbl("ut", nnz, 1);
+		valT = dualDbl("valT", nnz, 1);		lt = dualDbl("lt", nnz, 1);
 		
 	}
 	
@@ -50,13 +51,8 @@ public:
 		for (int idx = 0; idx < nrow+1; idx++)	{
 			if (idx == nrow) {h_ptr(idx,0) = nnz;}
 			else	{h_ptr(idx,0) = get_irow(config.i3d(idx), config.j3d(idx), config.k3d(idx), nx, ny, nz);}
-			
-			/*printf("(%d,%d,%d) : ptr=%d, nrow=%d, nnz=%d\n",
-				config.i3d(idx), config.j3d(idx), config.k3d(idx), h_ptr(idx,0), nrow, nnz);*/
 		}
 		ptr.modify<dualInt::host_mirror_space> ();
-		
-		//config.printi_view(ptr, 5, 0);
 		
 		Kokkos::parallel_for(nrow, Insert<dspace>(ptr, ind, val, rhs, state.matcoef, config));
 		config.sync(rhs);
@@ -128,50 +124,10 @@ public:
 	
 	// LU destateosition
 	inline void decompose(Config config)	{
-		Kokkos::parallel_for(nrow, Decomp<dspace>(ptr, ind, val, diag, diagN));
+		Kokkos::parallel_for(nrow, Decomp<dspace>(ptr, ind, val, diag, diagN, ut, lt));
 		config.sync(diag);
 		config.sync(diagN);
 	}
-	
-	// Transpose a CSR matrix by creating its CSC version
-	/*inline void transpose()	{
-		int ii, jj, col, dst;
-		double tmp, csum = 0.0, last = 0.0;
-		ptrT = dualInt("ptrT", nrow+1);	
-		indT = dualInt("indT", nnz);
-		valT = dualDbl("valT", nnz);
-		dualInt::t_host h_ptr = ptr.h_view;
-		dualInt::t_host h_ind = ind.h_view;
-		dualDbl::t_host h_val = val.h_view;
-		dualInt::t_host h_ptrT = ptrT.h_view;
-		dualInt::t_host h_indT = indT.h_view;
-		dualDbl::t_host h_valT = valT.h_view;
-		
-		for (ii = 0; ii < nnz; ii++)	{h_ptrT(h_ind(ii)) += 1;}
-		for (ii = 0; ii < ncol; ii++)	{
-			tmp = h_ptrT(ii);
-			h_ptrT(ii) = csum;
-			csum += tmp;
-		}
-		h_ptrT(ncol) = nnz;
-		for (ii = 0; ii < nrow; ii++)	{
-			for (jj = h_ptr(ii); jj < h_ptr(ii+1);	jj++)	{
-				col = h_ind(jj);
-				dst = h_ptrT(col);
-				h_indT(dst) = ii;
-				h_valT(dst) = h_val(jj);
-				h_ptrT(col) += 1;
-			}
-		}
-		for (ii = 0; ii < ncol; ii++)	{
-			tmp = h_ptrT(ii);
-			h_ptrT(ii) = last;
-			last = tmp;
-		}
-		ptrT.modify<dualInt::host_mirror_space> ();
-		indT.modify<dualInt::host_mirror_space> ();
-		valT.modify<dualDbl::host_mirror_space> ();
-	}*/
 	
 				
 	template<class ExecutionSpace>
@@ -204,12 +160,6 @@ public:
         	if (ii(idx) < nx-1)	{ind(irow,0) = idx + nz;	val(irow,0) = coef(idx,1);  irow++;}
         	if (jj(idx) < ny-1)	{ind(irow,0) = idx + nx*nz;	val(irow,0) = coef(idx,3);  irow++;}
         	rhs(idx,0) = coef(idx,7);
-        	
-        	/*if (ii(idx) == 10 & jj(idx) == 10)	{
-        		printf(" -%d- : coef = %f, %f, %f, %f, %f, %f, %f --> %f\n",kk(idx),
-        			1e5*coef(idx,4),1e5*coef(idx,2),1e5*coef(idx,6),1e5*coef(idx,0),
-        			1e5*coef(idx,5),1e5*coef(idx,1),1e5*coef(idx,3),1e5*coef(idx,7));
-        	}*/
     	}
     };
     
@@ -222,12 +172,17 @@ public:
 		Kokkos::View<dualDbl::scalar_array_type, dualDbl::array_layout, ms> val;
 		Kokkos::View<dualDbl::scalar_array_type, dualDbl::array_layout, ms> diag;
 		Kokkos::View<dualDbl::scalar_array_type, dualDbl::array_layout, ms> diagN;
-   		Decomp(dualInt d_ptr, dualInt d_ind, dualDbl d_val, dualDbl d_diag, dualDbl d_diagN)	{
+		Kokkos::View<dualDbl::scalar_array_type, dualDbl::array_layout, ms> ut;
+		Kokkos::View<dualDbl::scalar_array_type, dualDbl::array_layout, ms> lt;
+   		Decomp(dualInt d_ptr, dualInt d_ind, dualDbl d_val, dualDbl d_diag, dualDbl d_diagN,
+   			dualDbl d_ut, dualDbl d_lt)	{
    			ptr = d_ptr.template view<msi> ();	d_ptr.sync<msi> ();	
    			ind = d_ind.template view<msi> ();	d_ind.sync<msi> ();	
    			val = d_val.template view<ms> ();	d_val.sync<ms> ();	
    			diag = d_diag.template view<ms> ();	d_diag.sync<ms> ();	d_diag.modify<ms> ();
    			diagN = d_diagN.template view<ms> ();	d_diagN.sync<ms> ();	d_diagN.modify<ms> ();
+   			ut = d_ut.template view<ms> ();	d_ut.sync<ms> ();	d_ut.modify<ms> ();
+   			lt= d_lt.template view<ms> ();	d_lt.sync<ms> ();	d_lt.modify<ms> ();
    		}
     	KOKKOS_INLINE_FUNCTION	void operator() (const int idx) const {
     		int icol;
@@ -235,18 +190,21 @@ public:
     		for (icol = ptr(idx,0); icol < ptr(idx+1,0); icol++)	{
     			if (ind(icol,0) == idx)	{
     				diag(icol,0) = val(icol,0);	diag(icol,1) = 0.0;	diag(icol,2) = 0.0;
+    				ut(icol,0) = val(icol,0);	lt(icol,0) = val(icol,0);
     				diagN(idx,0) = val(icol,0);
     			}
     			else if (ind(icol,0) < idx)	{
     				diag(icol,0) = 0.0;	diag(icol,1) = val(icol,0);	diag(icol,2) = 0.0;
+    				lt(icol,0) = val(icol,0);
     			}
     			else if (ind(icol,0) > idx)	{
     				diag(icol,0) = 0.0;	diag(icol,1) = 0.0;	diag(icol,2) = val(icol,0);
+    				ut(icol,0) = val(icol,0);
     			}
     		}
     	}
     };
-   
+    
 
 };
 
