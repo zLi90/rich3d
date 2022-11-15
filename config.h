@@ -68,7 +68,7 @@ public:
     char finput[200];
     int iter_max;
     double eps_min;
-    
+
 	// Read one field from the input file
 	inline double read_one_input(const char field[], const char fname[]) {
 		int n = 1000, found = 0;
@@ -91,7 +91,7 @@ public:
 		printf(" Reading input from %s: %s = %s",fname,field,out_str);
 		return strtod(out_str, &ptr);
 	}
-	
+
 	// Write one state variable to the output file
 	inline void write_output(dualDbl array, char *fieldname, int t_ind, Config config)	{
 		int ii;
@@ -104,7 +104,7 @@ public:
 		strcpy(filename, config.fout);
 		strcat(filename, fieldname);
 		strcat(filename, t_str);
-		// write data 
+		// write data
 		dualDbl::t_host h_array = array.h_view;
 		array.sync<dualDbl::host_mirror_space> ();
 		fid = fopen(filename, "w");
@@ -116,10 +116,10 @@ public:
 		}
 		fclose(fid);
 	}
-	
+
 	// >>>>> Write point monitoring results <<<<<
 	inline void write_monitor(double val, char *fieldname, Config config)	{
-		FILE *fp;		
+		FILE *fp;
 		char filename[100];
 		strcpy(filename, config.fout);
 		strcat(filename, fieldname);
@@ -128,9 +128,9 @@ public:
 		fprintf(fp, "%8.8f \n", val);
 		fclose(fp);
 	}
-	
+
 	inline void write_monitor3(double val1, double val2, double val3, char *fieldname, Config config)	{
-		FILE *fp;		
+		FILE *fp;
 		char filename[100];
 		strcpy(filename, config.fout);
 		strcat(filename, fieldname);
@@ -139,7 +139,7 @@ public:
 		fprintf(fp, "%8.8f %8.8f %8.8f\n", val1, val2, val3);
 		fclose(fp);
 	}
-	
+
 	inline int exist(char *fname)	{
 		FILE *fid;
 		if ((fid = fopen(fname, "r")))
@@ -150,7 +150,7 @@ public:
 	// Setting up model parameters and connection map
     inline void init(const char inFile[]) {
     	int kk = 0;
-    	// Read input file 
+    	// Read input file
     	strcpy(finput, fdir);
 		strcat(finput, inFile);
 		iter_solve = (int) read_one_input("iter_solve", finput);
@@ -210,13 +210,13 @@ public:
 		//nall = (nx+2) * (ny+2) * (nz+2);
 		nbcell = 2.0*(nx*ny + nx*nz + ny*nz);
 		nall = ndom + nbcell;
-        Ct = IntArr("ct", ndom);	
-        iP = IntArr("iP", ndom);	iM = IntArr("iM", ndom);	
+        Ct = IntArr("ct", ndom);
+        iP = IntArr("iP", ndom);	iM = IntArr("iM", ndom);
         jP = IntArr("jP", ndom);	jM = IntArr("jM", ndom);
-        kP = IntArr("kP", ndom);	kM = IntArr("kM", ndom);	
-        i3d = IntArr("i3d", ndom);	j3d = IntArr("j3d", ndom);		
-        k3d = IntArr("k3d", ndom);	
-        bcell = IntArr2("bc", nbcell, 4);	bcval = DblArr("bcval", nbcell);	
+        kP = IntArr("kP", ndom);	kM = IntArr("kM", ndom);
+        i3d = IntArr("i3d", ndom);	j3d = IntArr("j3d", ndom);
+        k3d = IntArr("k3d", ndom);
+        bcell = IntArr2("bc", nbcell, 4);	bcval = DblArr("bcval", nbcell);
         for (int idx = 0; idx < ndom; idx++)	{
             j3d(idx) = floor(idx / (nx*nz));
             k3d(idx) = idx % nz;
@@ -237,37 +237,37 @@ public:
             // store bcells (bcell = [bctype, interior cell id, exterior cell id, axis])
             if (i3d(idx) == 0)	{
             	bcell(kk,0) = bc_type_xm;	bcell(kk,3) = -1;
-            	bcell(kk,1) = idx;	bcell(kk,2) = iM(idx); 
+            	bcell(kk,1) = idx;	bcell(kk,2) = iM(idx);
             	bcval(kk) = bc_val_xm;	kk += 1;
         	}
             if (i3d(idx) == nx-1)	{
             	bcell(kk,0) = bc_type_xp;	bcell(kk,3) = 1;
-            	bcell(kk,1) = idx;	bcell(kk,2) = iP(idx); 
+            	bcell(kk,1) = idx;	bcell(kk,2) = iP(idx);
             	bcval(kk) = bc_val_xp;	kk += 1;
         	}
             if (j3d(idx) == 0)	{
             	bcell(kk,0) = bc_type_ym;	bcell(kk,3) = -2;
-            	bcell(kk,1) = idx;	bcell(kk,2) = jM(idx); 
+            	bcell(kk,1) = idx;	bcell(kk,2) = jM(idx);
             	bcval(kk) = bc_val_ym;	kk += 1;
         	}
             if (j3d(idx) == ny-1)	{
             	bcell(kk,0) = bc_type_yp;	bcell(kk,3) = 2;
-            	bcell(kk,1) = idx;	bcell(kk,2) = jP(idx); 
+            	bcell(kk,1) = idx;	bcell(kk,2) = jP(idx);
             	bcval(kk) = bc_val_yp;	kk += 1;
         	}
 			if (k3d(idx) == 0)	{
 				bcell(kk,0) = bc_type_zm;	bcell(kk,3) = -3;
-				bcell(kk,1) = idx;	bcell(kk,2) = kM(idx); 
+				bcell(kk,1) = idx;	bcell(kk,2) = kM(idx);
 				bcval(kk) = bc_val_zm;	kk += 1;
 			}
             if (k3d(idx) == nz-1)	{
             	bcell(kk,0) = bc_type_zp;	bcell(kk,3) = 3;
-            	bcell(kk,1) = idx;	bcell(kk,2) = kP(idx); 
+            	bcell(kk,1) = idx;	bcell(kk,2) = kP(idx);
             	bcval(kk) = bc_val_zp;	kk += 1;
         	}
         }
     }
-    
+
     /*
     	Some useful functions
     */
@@ -286,7 +286,7 @@ public:
     	}
     	printf(" ----- \n");
     }
-    
+
     // sync
     void sync(dualDbl vector)	{vector.sync<dualDbl::host_mirror_space> ();}
     void synci(dualInt vector)	{vector.sync<dualInt::host_mirror_space> ();}

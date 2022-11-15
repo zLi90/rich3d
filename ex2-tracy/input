@@ -8,9 +8,9 @@ dx = 0.125
 dy = 0.125
 dz = 0.125
 dt_init = 1.0
-dt_max = 600.0
-t_end = 21600
-t_itvl = 21600
+dt_max = 90.0
+t_end = 9000
+t_itvl = 9000
 
 // Simulation control (for Newton's method)
 expl_solve = 0
@@ -25,7 +25,7 @@ kx = 1.019368e-11
 ky = 1.019368e-11
 kz = 1.019368e-11
 vga = 4.0
-vgn = 2.0
+vgn = 1.5
 phi = 0.35
 wcr = 0.016
 ss = 1e-5

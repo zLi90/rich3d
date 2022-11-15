@@ -5,26 +5,33 @@ IF(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.12.0")
   CMAKE_POLICY(SET CMP0074 NEW)
 ENDIF()
 
-if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-  set(CMAKE_CUDA_ARCHITECTURES 80)
-endif()
+#----------------------------------------------------
+#CMakeLists.txt:
+#----------------------------------------------------
+project (rich3d)
+IF(Enable_GPU)
+	if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+  		set(CMAKE_CUDA_ARCHITECTURES 80)
+	endif()
+ELSE()
+    set(CMAKE_C_COMPILER "/usr/local/bin/gcc-11")
+    set(CMAKE_CXX_COMPILER "/usr/local/bin/g++-11")
+    set(OPENMP_LIBRARIES "/usr/local/Cellar/gcc/11.2.0/lib")
+    set(OPENMP_INCLUDES "/usr/local/Cellar/gcc/11.2.0/include")
+	find_package(OpenMP REQUIRED)
+	include_directories("${OPENMP_INCLUDES}")
+	link_directories("${OPENMP_LIBRARIES}")
+ENDIF()
 
-project (rich3d C CXX CUDA)
-
-#project (rich3d)
-
-file(GLOB sources *.h *.hpp)
-
+file(GLOB sources *.h)
 add_executable(rich3d ${sources} rich3d.cpp)
-
-set(OPENMP_LIBRARIES "/usr/lib/gcc/x86_64-linux-gnu/11/include")
-set(OPENMP_INCLUDES "/usr/lib/gcc/x86_64-linux-gnu/11/include")
-#find_package(OpenMP REQUIRED)
-#include_directories("${OPENMP_INCLUDES}")
-#link_directories("${OPENMP_LIBRARIES}")
 
 find_package(Kokkos REQUIRED)
 target_link_libraries(rich3d PUBLIC Kokkos::kokkos)
-
-
-# To execute, type cmake -DKokkos_ROOT=/home/dell/Codes/kokkos-build-omp/
+#----------------------------------------------------
+# Execution with OpenMP:
+# cmake -DEnable_GPU=False -DKokkos_ROOT=${path-to-kokkos-build(OpenMP)}
+#----------------------------------------------------
+# Execution with CUDA:
+# cmake -DEnable_GPU=True -DKokkos_ROOT=${path-to-kokkos-build(CUDA)}
+#----------------------------------------------------

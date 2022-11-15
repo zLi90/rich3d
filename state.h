@@ -152,7 +152,7 @@ public:
 		}
 		
 		
-		//#if TEST_TRACY
+		#if TEST_TRACY
 		int idx;
 		double *htop = (double *) malloc(config.nx*config.ny*sizeof(double));
 		strcpy(finput, config.fdir);
@@ -171,7 +171,7 @@ public:
 			}
 		}
 		free(htop);
-		//#endif
+		#endif
 		h.modify<dualDbl::host_mirror_space> ();
 		wc.modify<dualDbl::host_mirror_space> ();
 	}
