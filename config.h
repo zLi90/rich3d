@@ -20,7 +20,7 @@
 #define GRAV 9.81
 
 #ifndef TEST_TRACY
-#define TEST_TRACY 1
+#define TEST_TRACY 0
 #endif
 
 #ifndef TEST_BEEGUM
@@ -49,7 +49,7 @@ class Config {
 
 public:
 	// solver
-	int iter_solve, pcg_solve, niter_solver, exp_solve, precondition;
+	int iter_solve, pcg_solve, niter_solver, exp_solve, precondition, scheme;
     // Domain info
     int nx, ny, nz, nt, nall, ndom, nbcell, init_file;
     double dx, dy, dz, dt, t_end, t_itvl, dt_max, dt_init;
@@ -153,9 +153,10 @@ public:
     	// Read input file
     	strcpy(finput, fdir);
 		strcat(finput, inFile);
-		iter_solve = (int) read_one_input("iter_solve", finput);
+		scheme = (int) read_one_input("scheme", finput);
+		//iter_solve = (int) read_one_input("iter_solve", finput);
 		pcg_solve = (int) read_one_input("pcg_solve", finput);
-		exp_solve = (int) read_one_input("expl_solve", finput);
+		//exp_solve = (int) read_one_input("expl_solve", finput);
 		precondition = (int) read_one_input("precondition", finput);
 		// Build output directory
 		mkdir(fout, 0777);
