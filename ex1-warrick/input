@@ -1,8 +1,8 @@
 // User inputs
 
 // Domain info
-nx = 100
-ny = 100
+nx = 1
+ny = 1
 nz = 100
 dx = 1.0
 dy = 1.0
@@ -12,9 +12,8 @@ dt_max = 10.0
 t_end = 46800.0
 t_itvl = 11700.0
 
-// Solution method 
-expl_solve = 0
-iter_solve = 1
+// Solution method
+scheme = 4
 pcg_solve = 0
 precondition = 1
 iter_max = 50
@@ -40,7 +39,7 @@ init_file = 0
 h_init = 0.0
 wc_init = 0.03
 wt_init = 1.0
- 
+
 // Boundary conditions
 // BC_type = 0 : no flux
 //			1	: Fixed head
