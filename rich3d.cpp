@@ -17,7 +17,8 @@
 
 int main(int argc, char** argv)	{
 	int i_out = 0, iter, nthreads, iter_gmres;
-	double t_now = 0.0, t_out = 0.0, t0, t1, t_init, t_final, t_cg = 0.0;
+	double t_now = 0.0, t_out = 0.0, t0, t1, t_init, t_final;
+	double t_solver = 0.0, t_matrix = 0.0, t_total = 0.0;
 	double eps_gmres, eps, eps_old, eps_diff;
 	double dt_newton, t_switch;
 	Kokkos::InitArguments args;
@@ -103,15 +104,19 @@ int main(int argc, char** argv)	{
 			// Compute hydraulic conductivity on cell faces
 			pca.get_conductivity(config);
 			// Build the linear system of equations
+			t0 = clock();
 			pca.linear_system(config);
 			A.build_matrix(pca, config);
+			t1 = clock();
+			t_matrix += (t1 - t0)/(float)CLOCKS_PER_SEC;
+			
 			A.decompose(config);
 			// Solve with CG
 			t0 = clock();
 			if (config.pcg_solve == 1)	{iter_gmres = solver.cg(A, K, config);}
 			else	{iter_gmres = solver.gmres(A, config);}
 			t1 = clock();
-			t_cg += (t1 - t0)/(float)CLOCKS_PER_SEC;
+			t_solver += (t1 - t0)/(float)CLOCKS_PER_SEC;
 			solver.copy(A.x, 0, pca.h, 1);
 			config.sync(pca.h);
 			// Update flux and water content
@@ -130,14 +135,18 @@ int main(int argc, char** argv)	{
 			pic.get_conductivity(config);
 			pic.get_flux(config);
 			while (iter < config.iter_max & eps > config.eps_min)	{
+				t0 = clock();
 				pic.linear_system(config);
 				A.build_matrix(pic, config);
+				t1 = clock();
+				t_matrix += (t1 - t0)/(float)CLOCKS_PER_SEC;
+			
 				A.decompose(config);
 				t0 = clock();
 				if (config.pcg_solve == 1)	{iter_gmres = solver.cg(A, K, config);}
 				else	{iter_gmres = solver.gmres(A, config);}
 				t1 = clock();
-				t_cg += (t1 - t0)/(float)CLOCKS_PER_SEC;
+				t_solver += (t1 - t0)/(float)CLOCKS_PER_SEC;
 				solver.copy(pic.h, 1, pic.h, 0);
 				solver.copy(A.x, 0, pic.h, 1);
 				config.sync(pic.h);
@@ -159,15 +168,18 @@ int main(int argc, char** argv)	{
 			nwt.get_conductivity(config);
 			nwt.get_flux(config);
 			while (iter < config.iter_max & eps > config.eps_min)   {
+				t0 = clock();
 				nwt.jacobian_system(config);
 				A.build_matrix(nwt, config);
+				t1 = clock();
+				t_matrix += (t1 - t0)/(float)CLOCKS_PER_SEC;
 				A.decompose(config);
 				// Solve with CG or GMRES
 				t0 = clock();
 				if (config.pcg_solve == 1)	{iter_gmres = solver.cg(A, K, config);}
 				else	{iter_gmres = solver.gmres(A, config);}
 				t1 = clock();
-				t_cg += (t1 - t0)/(float)CLOCKS_PER_SEC;
+				t_solver += (t1 - t0)/(float)CLOCKS_PER_SEC;
 
 				solver.copy(A.x, 0, nwt.dh, 0);
 				config.sync(nwt.dh);
@@ -243,7 +255,9 @@ int main(int argc, char** argv)	{
 	}
 
 	t_final = clock();
-	printf("\n >>>>> Simulation completed in %f sec! CG solves in %f sec\n\n",(t_final - t_init)/(float)CLOCKS_PER_SEC/nthreads, t_cg/nthreads);
+	t_total = (t_final - t_init)/(float)CLOCKS_PER_SEC/nthreads;
+	printf("\n >>>>> Simulation completed in %f sec! \n\n",t_total);
+	config.write_siminfo(t_total, t_matrix/nthreads, t_solver/nthreads, "simtime", config);
 	Kokkos::finalize();
 	return 0;
 }

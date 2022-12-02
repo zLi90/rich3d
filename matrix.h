@@ -39,14 +39,6 @@ public:
 		diagN = dualDbl("diagN", nrow, 1);	ut = dualDbl("ut", nnz, 1);
 		valT = dualDbl("valT", nnz, 1);		lt = dualDbl("lt", nnz, 1);
 		
-	}
-	
-	// insert matrix entries
-	inline void build_matrix(State state, Config config)	{
-		int nx, ny, nz;
-		nx = config.nx;	ny = config.ny;	nz = config.nz;
-		// from device to host
-		// modified views
 		dualInt::t_host h_ptr = ptr.h_view;
 		for (int idx = 0; idx < nrow+1; idx++)	{
 			if (idx == nrow) {h_ptr(idx,0) = nnz;}
@@ -54,12 +46,15 @@ public:
 		}
 		ptr.modify<dualInt::host_mirror_space> ();
 		
+	}
+	
+	// insert matrix entries
+	inline void build_matrix(State state, Config config)	{
 		Kokkos::parallel_for(nrow, Insert<dspace>(ptr, ind, val, rhs, state.matcoef, config));
 		config.sync(rhs);
 		config.sync(val);
-		config.synci(ptr);
+		//config.synci(ptr);
 		config.synci(ind);
-		Kokkos::fence();
 	}
 	
 	// get starting index 

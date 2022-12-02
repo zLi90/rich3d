@@ -139,6 +139,20 @@ public:
 		fprintf(fp, "%8.8f %8.8f %8.8f\n", val1, val2, val3);
 		fclose(fp);
 	}
+	
+	inline void write_siminfo(double t_tot, double t_mat, double t_sol, char *fieldname, Config config)	{
+		double t_oth = t_tot - t_mat - t_sol;
+		FILE *fp;
+		char filename[100];
+		strcpy(filename, config.fout);
+		strcat(filename, fieldname);
+		if (exist(filename))    {fp = fopen(filename, "a");}
+		else    {fp = fopen(filename, "w");}
+		fprintf(fp, "Total Time | Matrix Time | Solver Time | Other Time (sec)\n");
+		fprintf(fp, "%8.8f %8.8f %8.8f %8.8f\n", t_tot, t_mat, t_sol, t_oth);
+		fprintf(fp, "%8.8f %8.8f %8.8f %8.8f\n", t_tot/t_tot, t_mat/t_tot, t_sol/t_tot, t_oth/t_tot);
+		fclose(fp);
+	}
 
 	inline int exist(char *fname)	{
 		FILE *fid;
