@@ -8,7 +8,7 @@ A 3D Richards solver based on Kokkos.
  - cmake (version 3.10 and above)
  - Kokkos (version 3.0)
 
- NOTE: If using Kokkos 4.0, the user needs to replace `Kokkos::InitArguments` in `driver.cpp` by the new conventions.
+ NOTE: If using Kokkos 4.0, the user needs to replace `Kokkos::InitArguments` in `rich3d.cpp` by the new conventions for initializing Kokkos.
 
 # Build and Execute
 
