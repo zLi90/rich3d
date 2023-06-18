@@ -29,19 +29,15 @@
 
 #ifdef __NVCC__
 typedef Kokkos::View<double* ,Kokkos::LayoutRight,Kokkos::Device<Kokkos::Cuda,Kokkos::CudaUVMSpace>> DblArr;
+typedef Kokkos::View<double** ,Kokkos::LayoutRight,Kokkos::Device<Kokkos::Cuda,Kokkos::CudaUVMSpace>> DblArr2;
 typedef Kokkos::View<int* ,Kokkos::LayoutRight,Kokkos::Device<Kokkos::Cuda,Kokkos::CudaUVMSpace>> IntArr;
 typedef Kokkos::View<int** ,Kokkos::LayoutRight,Kokkos::Device<Kokkos::Cuda,Kokkos::CudaUVMSpace>> IntArr2;
 #else
 typedef Kokkos::View<double* ,Kokkos::LayoutRight> DblArr;
+typedef Kokkos::View<double** ,Kokkos::LayoutRight> DblArr2;
 typedef Kokkos::View<int* ,Kokkos::LayoutRight> IntArr;
 typedef Kokkos::View<int** ,Kokkos::LayoutRight> IntArr2;
 #endif
-
-
-typedef Kokkos::DualView<int**> dualInt;
-typedef Kokkos::DualView<double**> dualDbl;
-
-typedef dualDbl::execution_space dspace;
 
 
 // User configurations
@@ -51,14 +47,14 @@ public:
 	// solver
 	int iter_solve, pcg_solve, niter_solver, exp_solve, precondition, scheme;
     // Domain info
-    int nx, ny, nz, nt, nall, ndom, nbcell, init_file;
+    int nx, ny, nz, nt, nall, ndom, nbcell, init_file, num_sync;
     double dx, dy, dz, dt, t_end, t_itvl, dt_max, dt_init;
     // Initial and Boundary conditions
     int bc_type_xp, bc_type_xm, bc_type_yp, bc_type_ym, bc_type_zp, bc_type_zm;
     double bc_val_xp, bc_val_xm, bc_val_yp, bc_val_ym, bc_val_zp, bc_val_zm;
     double h_init, wc_init, wt_init;
     // properties
-    double rho, mu, kx, ky, kz, vga, vgn, phi, wcr, ss;
+    double rho, mu, kx, ky, kz, vga, vgn, phi, wcr, ss, aev=0.02;
     // Map
     IntArr Ct, iP, iM, jP, jM, kP, kM, i3d, j3d, k3d;
     DblArr bcval;
@@ -93,7 +89,7 @@ public:
 	}
 
 	// Write one state variable to the output file
-	inline void write_output(dualDbl array, char *fieldname, int t_ind, Config config)	{
+	inline void write_output(DblArr2 array, char *fieldname, int t_ind, Config config)	{
 		int ii;
 		FILE *fid;
 		char t_str[10], filename[100];
@@ -105,14 +101,12 @@ public:
 		strcat(filename, fieldname);
 		strcat(filename, t_str);
 		// write data
-		dualDbl::t_host h_array = array.h_view;
-		array.sync<dualDbl::host_mirror_space> ();
 		fid = fopen(filename, "w");
 		for (ii = 0; ii < config.ndom; ii++)	{
 			x = (config.i3d(ii)+0.5) * config.dx;
 			y = (config.j3d(ii)+0.5) * config.dy;
 			z = (config.k3d(ii)+0.5) * config.dz;
-			fprintf(fid, "%6.6f, %6.6f, %6.6f, %6.6f \n", x, y, z, h_array(ii,1));
+			fprintf(fid, "%6.6f, %6.6f, %6.6f, %6.6f \n", x, y, z, array(ii,1));
 		}
 		fclose(fid);
 	}
@@ -140,17 +134,17 @@ public:
 		fclose(fp);
 	}
 	
-	inline void write_siminfo(double t_tot, double t_mat, double t_sol, char *fieldname, Config config)	{
-		double t_oth = t_tot - t_mat - t_sol;
+	inline void write_siminfo(double t_tot, double t_mat, double t_sol, double t_k, double t_flux, double t_wc, double t_dt, char *fieldname, Config config)	{
+		double t_oth = t_tot - t_mat - t_sol - t_flux - t_wc - t_dt;
 		FILE *fp;
 		char filename[100];
 		strcpy(filename, config.fout);
 		strcat(filename, fieldname);
 		if (exist(filename))    {fp = fopen(filename, "a");}
 		else    {fp = fopen(filename, "w");}
-		fprintf(fp, "Total Time | Matrix Time | Solver Time | Other Time (sec)\n");
-		fprintf(fp, "%8.8f %8.8f %8.8f %8.8f\n", t_tot, t_mat, t_sol, t_oth);
-		fprintf(fp, "%8.8f %8.8f %8.8f %8.8f\n", t_tot/t_tot, t_mat/t_tot, t_sol/t_tot, t_oth/t_tot);
+		fprintf(fp, "Total Time | Matrix Time | Solver Time | K Time | Flux Time | WC Time | DT Time | Other Time (sec)\n");
+		fprintf(fp, "%8.8f %8.8f %8.8f %8.8f %8.8f %8.8f %8.8f %8.8f\n", t_tot, t_mat, t_sol, t_k, t_flux, t_wc, t_dt, t_oth);
+		fprintf(fp, "%8.8f %8.8f %8.8f %8.8f %8.8f %8.8f %8.8f %8.8f\n", t_tot/t_tot, t_mat/t_tot, t_sol/t_tot, t_k/t_tot, t_flux/t_tot, t_wc/t_tot, t_dt/t_tot, t_oth/t_tot);
 		fclose(fp);
 	}
 
@@ -164,6 +158,7 @@ public:
 	// Setting up model parameters and connection map
     inline void init(const char inFile[]) {
     	int kk = 0;
+    	num_sync = 0;
     	// Read input file
     	strcpy(finput, fdir);
 		strcat(finput, inFile);
@@ -283,28 +278,6 @@ public:
         }
     }
 
-    /*
-    	Some useful functions
-    */
-    // print out the first n elements of a view
-    inline void print_view(dualDbl vec, int n, int col, double scale)	{
-    	dualDbl::t_host h_vec = vec.h_view;
-    	for (int ii = 0; ii < n; ii++)	{
-    		printf(" PRINT : -%d- val=%f\n",ii,scale * h_vec(ii,col));
-    	}
-    	printf(" ----- \n");
-    }
-    inline void printi_view(dualInt vec, int n, int col)	{
-    	dualInt::t_host h_vec = vec.h_view;
-    	for (int ii = 0; ii < n; ii++)	{
-    		printf(" PRINT : -%d- val=%d\n",ii,h_vec(ii,col));
-    	}
-    	printf(" ----- \n");
-    }
-
-    // sync
-    void sync(dualDbl vector)	{vector.sync<dualDbl::host_mirror_space> ();}
-    void synci(dualInt vector)	{vector.sync<dualInt::host_mirror_space> ();}
 
 
 };

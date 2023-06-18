@@ -1,23 +1,23 @@
 // User inputs
 
 // Domain info
-nx = 1
-ny = 1
+nx = 100
+ny = 100
 nz = 100
 dx = 1.0
 dy = 1.0
 dz = 0.01
 dt_init = 0.001
-dt_max = 10.0
-t_end = 46800.0
+dt_max = 20.0
+t_end = 28800.0
 t_itvl = 11700.0
 
-// Solution method
-scheme = 4
-pcg_solve = 0
+// Solution method 
+scheme = 1
+pcg_solve = 1
 precondition = 1
-iter_max = 50
-eps_min = 1e-3
+iter_max = 20
+eps_min = 1e-4
 
 // Media and fluid properties
 kx = 0.0
@@ -39,7 +39,7 @@ init_file = 0
 h_init = 0.0
 wc_init = 0.03
 wt_init = 1.0
-
+ 
 // Boundary conditions
 // BC_type = 0 : no flux
 //			1	: Fixed head
