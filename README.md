@@ -12,10 +12,12 @@ A 3D Richards solver based on Kokkos.
 
 # Build and Execute
 
-Using OpenMP:
+Assume that an in-source build is used, i.e., the user is in the `rich3d` directory. Otherwise, the user needs to specify the path to the source directory when using `cmake`.
+
+Build with OpenMP:
 `cmake -DEnable_GPU=OFF -DKokkos_ROOT=${path-to-kokkos-build(OpenMP)}`
 
-Using CUDA:
+Build with CUDA:
 `cmake -DEnable_GPU=ON -DKokkos_ROOT=${path-to-kokkos-build(CUDA)}`
 
 Then type `make` to compile.
