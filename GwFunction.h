@@ -33,6 +33,9 @@ public:
         Get face conductivity
     -------------------------------------------------- */
     inline void face_conductivity(GwState &gw, Config &config)	{
+    	
+    	
+    	
         // Get relatively permeability at cell centers
         Kokkos::parallel_for( config.nall , KOKKOS_LAMBDA(int idx) {
         	double m = 1.0 - 1.0/config.vgn;
@@ -118,6 +121,53 @@ public:
 				}
 			}
         });
+        
+	}
+	
+	// An alternative implementation with fewer synchronizations
+	inline void face_conductivity2(GwState &gw, Config &config)	{
+		
+    	
+        Kokkos::parallel_for( config.ndom , KOKKOS_LAMBDA(int idx) {
+        	double m = 1.0 - 1.0/config.vgn;
+        	double coef = config.rho * GRAV / config.mu;
+        	double sbar2, sbar = pow(1.0 + pow(fabs(config.vga*gw.h(idx,1)), config.vgn), -m);
+        	gw.k(idx,3) = pow(sbar,0.5) * pow(1-pow(1-pow(sbar,1.0/m),m), 2.0);
+        	if (gw.k(idx,3) < 0.0)	{gw.k(idx,3) = 0.0;}
+        	else if (gw.k(idx,3) > 1.0)	{gw.k(idx,3) = 1.0;}
+        	// x 
+        	sbar2 = pow(1.0 + pow(fabs(config.vga*gw.h(config.iP(idx),1)), config.vgn), -m);
+        	gw.k(config.iP(idx),3) = pow(sbar2,0.5) * pow(1-pow(1-pow(sbar2,1.0/m),m), 2.0);
+        	gw.k(idx,0) = 0.5 * coef * config.kx * (gw.k(idx,3) + gw.k(config.iP(idx),3));
+        	if (gw.k(idx,0) > coef*config.kx)	{gw.k(idx,0) = coef*config.kx;}
+        	// y 
+        	sbar2 = pow(1.0 + pow(fabs(config.vga*gw.h(config.jP(idx),1)), config.vgn), -m);
+        	gw.k(config.jP(idx),3) = pow(sbar2,0.5) * pow(1-pow(1-pow(sbar2,1.0/m),m), 2.0);
+        	gw.k(idx,1) = 0.5 * coef * config.ky * (gw.k(idx,3) + gw.k(config.jP(idx),3));
+        	if (gw.k(idx,1) > coef*config.ky)	{gw.k(idx,1) = coef*config.ky;}
+        	// z
+        	sbar2 = pow(1.0 + pow(fabs(config.vga*gw.h(config.kP(idx),1)), config.vgn), -m);
+        	gw.k(config.kP(idx),3) = pow(sbar2,0.5) * pow(1-pow(1-pow(sbar2,1.0/m),m), 2.0);
+        	gw.k(idx,2) = 0.5 * coef * config.kz * (gw.k(idx,3) + gw.k(config.kP(idx),3));
+        	if (gw.k(idx,2) > coef*config.kz)	{gw.k(idx,2) = coef*config.kz;}
+        	// Boundaries
+        	if (config.i3d(idx) == 0)	{
+    			sbar2 = pow(1.0 + pow(fabs(config.vga*gw.h(config.iM(idx),1)), config.vgn), -m);
+    			gw.k(config.iM(idx),3) = pow(sbar2,0.5) * pow(1-pow(1-pow(sbar2,1.0/m),m), 2.0);
+    			gw.k(config.iM(idx),0) = 0.5 * coef * config.kx * (gw.k(idx,3) + gw.k(config.iM(idx),3));
+        	}
+        	if (config.j3d(idx) == 0)	{
+    			sbar2 = pow(1.0 + pow(fabs(config.vga*gw.h(config.jM(idx),1)), config.vgn), -m);
+    			gw.k(config.jM(idx),3) = pow(sbar2,0.5) * pow(1-pow(1-pow(sbar2,1.0/m),m), 2.0);
+    			gw.k(config.jM(idx),1) = 0.5 * coef * config.ky * (gw.k(idx,3) + gw.k(config.jM(idx),3));
+        	}
+        	if (config.k3d(idx) == 0)	{
+				sbar2 = pow(1.0 + pow(fabs(config.vga*gw.h(config.kM(idx),1)), config.vgn), -m);
+				gw.k(config.kM(idx),3) = pow(sbar2,0.5) * pow(1-pow(1-pow(sbar2,1.0/m),m), 2.0);
+				gw.k(config.kM(idx),2) = 0.5 * coef * config.kz * (gw.k(idx,3) + gw.k(config.kM(idx),3));
+        	}
+    	});
+        
 	}
     // /* --------------------------------------------------
     //     End of conductivity block

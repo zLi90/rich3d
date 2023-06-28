@@ -20,6 +20,8 @@ int main(int argc, char** argv)	{
 	double eps_gmres, eps, eps_old, eps_diff;
 	double dt_newton, t_switch;
 	Kokkos::InitArguments args;
+	Kokkos::Timer timer;
+	Kokkos::Timer timer2;
 	#ifdef __NVCC__
 		nthreads = 1;
 		Kokkos::initialize(argc, argv);
@@ -47,7 +49,8 @@ int main(int argc, char** argv)	{
 	config.write_output(gw.wc, "out-satu", i_out, config);
 	config.write_output(gw.h, "out-head", i_out, config);
 	i_out += 1;
-	t_init = clock();
+	//t_init = clock();
+	t_init = timer2.seconds();
 
 	/*
 		----------    Time Stepping    ----------
@@ -58,52 +61,62 @@ int main(int argc, char** argv)	{
 	while (t_now <= config.t_end + config.dt)	{
 		// Fully explicit scheme
 		if (config.scheme == 1)	{
-			t0 = clock();
+			t0 = timer.seconds();
+			#if ALGO2
+			gwf.face_conductivity2(gw, config);
+			#else
 			gwf.face_conductivity(gw, config);
-			t1 = clock();
-			t_k += (t1 - t0)/(float)CLOCKS_PER_SEC;
+			#endif
+			Kokkos::fence();
+			t1 = timer.seconds();
+			t_k += (t1 - t0);
 			
-			t0 = clock();
+			t0 = timer.seconds();
 		    gwf.face_flux(gw, config);
-		    t1 = clock();
-			t_flux += (t1 - t0)/(float)CLOCKS_PER_SEC;
+		    Kokkos::fence();
+		    t1 = timer.seconds();
+			t_flux += (t1 - t0);
 			
-			t0 = clock();
+			t0 = timer.seconds();
 		    gwf.update_wc(gw, config);
-		    t1 = clock();
-			t_wc += (t1 - t0)/(float)CLOCKS_PER_SEC;
+		    Kokkos::fence();
+		    t1 = timer.seconds();
+			t_wc += (t1 - t0);
 			
-			t0 = clock();
+			t0 = timer.seconds();
 		    gwf.dt_waco(gw, config);
 		    gwf.update(gw, config);
-		    t1 = clock();
-			t_dt += (t1 - t0)/(float)CLOCKS_PER_SEC;
+		    Kokkos::fence();
+		    t1 = timer.seconds();
+			t_dt += (t1 - t0);
 			
 			iter = 1;	iter_gmres = 0;
 			config.write_monitor3(t_now, iter, iter_gmres, "iter", config);
-			// Optinal hybrid scheme
-			/*if (t_now - t_switch > 1800.0)	{
-				config.scheme = 4;
-				config.dt_init = 1.0;
-				Kokkos::deep_copy(nwt.h, expl.h);
-				Kokkos::deep_copy(nwt.wc, expl.wc);
-				config.dt = dt_newton;
-				config.dt_max = 600.0;
-			}*/
 		}
-		// PCA scheme (20 + 2*niter) sync operations
+		// PCA scheme 
 		else if (config.scheme == 2)	{
-			t0 = clock();
+		    t0 = timer.seconds();
+			//t0 = timer.seconds();
+			#if ALGO2
+			gwf.face_conductivity2(gw, config);
+			#else
 			gwf.face_conductivity(gw, config);
-			t1 = clock();
-			t_k += (t1 - t0)/(float)CLOCKS_PER_SEC;
+			#endif
+			//t1 = timer.seconds();
+			//t_k += (t1 - t0);
+			Kokkos::fence();
+			t1 = timer.seconds();
+			t_k += (t1 - t0);
 			
-			t0 = clock();
+			
+			t0 = timer.seconds();
 		    gwf.linear_system(gw, A, config);
-		    t1 = clock();
-			t_matrix += (t1 - t0)/(float)CLOCKS_PER_SEC;
+		    Kokkos::fence();
+		    t1 = timer.seconds();
+			t_matrix += (t1 - t0);
 			
-			t0 = clock();
+			
+			t0 = timer.seconds();
 			Kokkos::parallel_for(config.ndom, KOKKOS_LAMBDA(int idx) {
 		        A.x(idx) = gw.h(idx,1);
 		    });
@@ -112,48 +125,50 @@ int main(int argc, char** argv)	{
 		    Kokkos::parallel_for(config.ndom, KOKKOS_LAMBDA(int idx) {
 		        gw.h(idx,1) = A.x(idx);
 		    });
-			t1 = clock();
-			t_solver += (t1 - t0)/(float)CLOCKS_PER_SEC;
+			t1 = timer.seconds();
+			t_solver += (t1 - t0);
+			Kokkos::fence();
 
-			t0 = clock();
+			t0 = timer.seconds();
+			#if ALGO2
+			gwf.face_conductivity2(gw, config);
+			#else
 			gwf.face_conductivity(gw, config);
-			t1 = clock();
-			t_k += (t1 - t0)/(float)CLOCKS_PER_SEC;
+			#endif
+			Kokkos::fence();
+			t1 = timer.seconds();
+			t_k += (t1 - t0);
 			
-			t0 = clock();
+			
+			t0 = timer.seconds();
 		    gwf.face_flux(gw, config);
-		    t1 = clock();
-			t_flux += (t1 - t0)/(float)CLOCKS_PER_SEC;
+		    Kokkos::fence();
+		    t1 = timer.seconds();
+			t_flux += (t1 - t0);
+			
 
-			t0 = clock();
+			t0 = timer.seconds();
 		    gwf.update_wc(gw, config);
-		    t1 = clock();
-			t_wc += (t1 - t0)/(float)CLOCKS_PER_SEC;
+		    Kokkos::fence();
+		    t1 = timer.seconds();
+			t_wc += (t1 - t0);
+			
 
-			t0 = clock();
+			t0 = timer.seconds();
 		    gwf.dt_waco(gw, config);
 		    gwf.update(gw, config);
-		    t1 = clock();
-			t_dt += (t1 - t0)/(float)CLOCKS_PER_SEC;
+		    Kokkos::fence();
+		    t1 = timer.seconds();
+			t_dt += (t1 - t0);
+			
 			
 		    iter = 1;
 		    config.write_monitor3(t_now, iter, iter_gmres, "iter", config);
 			
-			//t_now = config.t_end + 100.0;
-			
-			/*if (t_now - t_switch > 1800.0)	{
-				printf(" Switching back to Newton ... %f, %f\n",t_now,t_switch);
-				config.scheme = 4;
-				config.pcg_solve = 0;
-				Kokkos::deep_copy(nwt.h, pca.h);
-				Kokkos::deep_copy(nwt.wc, pca.wc);
-			}*/
 		}
 		// Picard scheme
 		else if (config.scheme == 3)	{
 			eps = 1.0;	iter = 0;
-			
-			//printf(" wc = %f, %f, h = %f, %f\n",gw.wc(config.kM(0),1), gw.wc(0,1),gw.h(config.kM(0),1),gw.h(0,1));
 			
 			gwf.update(gw, config);
 			
@@ -162,38 +177,47 @@ int main(int argc, char** argv)	{
 			});
 			
 			while (iter < config.iter_max & eps > config.eps_min)	{
-				t0 = clock();
+				t0 = timer.seconds();
 				gwf.linear_system(gw, A, config);
-				t1 = clock();
-				t_matrix += (t1 - t0)/(float)CLOCKS_PER_SEC;
+				Kokkos::fence();
+				t1 = timer.seconds();
+				t_matrix += (t1 - t0);
 				
-				t0 = clock();
+				t0 = timer.seconds();
 				if (config.pcg_solve == 1)	{iter_gmres = gsolver.cg(A, config);}
 				else {iter_gmres = gsolver.gmres(A, config);}
 				Kokkos::parallel_for(config.ndom, KOKKOS_LAMBDA(int idx) {
 					gw.h(idx,0) = gw.h(idx,1);
 				    gw.h(idx,1) = A.x(idx);
 				});
-				t1 = clock();
-				t_solver += (t1 - t0)/(float)CLOCKS_PER_SEC;
+				Kokkos::fence();
+				t1 = timer.seconds();
+				t_solver += (t1 - t0);
 				
-				t0 = clock();
+				t0 = timer.seconds();
+				#if ALGO2
+				gwf.face_conductivity2(gw, config);
+				#else
 				gwf.face_conductivity(gw, config);
-				t1 = clock();
-				t_k += (t1 - t0)/(float)CLOCKS_PER_SEC;
+				#endif
+				Kokkos::fence();
+				t1 = timer.seconds();
+				t_k += (t1 - t0);
 				
-				t0 = clock();
+				t0 = timer.seconds();
 				gwf.face_flux(gw, config);
-				t1 = clock();
-				t_flux += (t1 - t0)/(float)CLOCKS_PER_SEC;
+				Kokkos::fence();
+				t1 = timer.seconds();
+				t_flux += (t1 - t0);
 				
-				t0 = clock();
+				t0 = timer.seconds();
 				Kokkos::parallel_for(config.ndom, KOKKOS_LAMBDA(int idx) {
 					gw.wc(idx,0) = gw.wc(idx,1);
 				});
 				gwf.update_wc(gw, config);
-				t1 = clock();
-				t_wc += (t1 - t0)/(float)CLOCKS_PER_SEC;
+				Kokkos::fence();
+				t1 = timer.seconds();
+				t_wc += (t1 - t0);
 				
 				eps = gwf.getErr(gw, config);
 				
@@ -202,15 +226,21 @@ int main(int argc, char** argv)	{
 				//if (eps_diff / eps_old < config.eps_min)	{break;}
 				if (eps < config.eps_min)	{break;}
 			}
-			t0 = clock();
+			t0 = timer.seconds();
+			#if ALGO2
+			gwf.face_conductivity2(gw, config);
+			#else
 			gwf.face_conductivity(gw, config);
-			t1 = clock();
-			t_k += (t1 - t0)/(float)CLOCKS_PER_SEC;
+			#endif
+			Kokkos::fence();
+			t1 = timer.seconds();
+			t_k += (t1 - t0);
 			
-			t0 = clock();
+			t0 = timer.seconds();
 		    gwf.face_flux(gw, config);
-		    t1 = clock();
-			t_flux += (t1 - t0)/(float)CLOCKS_PER_SEC;
+		    Kokkos::fence();
+		    t1 = timer.seconds();
+			t_flux += (t1 - t0);
 			
 			printf("     >>> Picard converges in %d iterations! eps=%f \n", iter,fabs(eps));
 		}
@@ -219,75 +249,74 @@ int main(int argc, char** argv)	{
 			eps = 1.0;	iter = 0;
 			nwt.update(gw, config);
 			
-			t0 = clock();
+			t0 = timer.seconds();
+			#if ALGO2
+			gwf.face_conductivity2(gw, config);
+			#else
 			gwf.face_conductivity(gw, config);
-			t1 = clock();
-			t_k += (t1 - t0)/(float)CLOCKS_PER_SEC;
+			#endif
+			Kokkos::fence();
+			t1 = timer.seconds();
+			t_k += (t1 - t0);
 			
-			t0 = clock();
+			t0 = timer.seconds();
 		    gwf.face_flux(gw, config);
-		    t1 = clock();
-			t_flux += (t1 - t0)/(float)CLOCKS_PER_SEC;
+		    Kokkos::fence();
+		    t1 = timer.seconds();
+			t_flux += (t1 - t0);
 			
+			int topc = 0;
 			while (iter < config.iter_max & eps > config.eps_min)   {
-				t0 = clock();
+				t0 = timer.seconds();
 				nwt.newton_residual(gw, config);
 				nwt.jacobian_offdiag(gw, config, 0);
 				nwt.jacobian_offdiag(gw, config, 1);
 				nwt.jacobian_offdiag(gw, config, 2);
 				nwt.jacobian_diag(gw, A, config);
-				t1 = clock();
-				t_matrix += (t1 - t0)/(float)CLOCKS_PER_SEC;
+				Kokkos::fence();
+				t1 = timer.seconds();
+				t_matrix += (t1 - t0);
 				
 				// Solve with CG or GMRES
-				t0 = clock();
+				t0 = timer.seconds();
 				if (config.pcg_solve == 1)	{iter_gmres = gsolver.cg(A, config);}
 				else {iter_gmres = gsolver.gmres(A, config);}
 				Kokkos::parallel_for(config.ndom, KOKKOS_LAMBDA(int idx) {
 					gw.dh(idx) = A.x(idx);	A.x(idx) = 0.0;
 				});
 				nwt.incre_h(gw, config);
-				t1 = clock();
-				t_solver += (t1 - t0)/(float)CLOCKS_PER_SEC;
+				Kokkos::fence();
+				t1 = timer.seconds();
+				t_solver += (t1 - t0);
 
 				eps_old = eps;
 				eps = nwt.newton_eps(gw, config);
 				eps_diff = fabs(eps_old - eps);
 				//eps = nwt.getErr(gw, config);
 
-				t0 = clock();
+				t0 = timer.seconds();
+				#if ALGO2
+				gwf.face_conductivity2(gw, config);
+				#else
 				gwf.face_conductivity(gw, config);
-				t1 = clock();
-				t_k += (t1 - t0)/(float)CLOCKS_PER_SEC;
+				#endif
+				Kokkos::fence();
+				t1 = timer.seconds();
+				t_k += (t1 - t0);
 				
-				t0 = clock();
+				t0 = timer.seconds();
 				gwf.face_flux(gw, config);
-				t1 = clock();
-				t_flux += (t1 - t0)/(float)CLOCKS_PER_SEC;
+				Kokkos::fence();
+				t1 = timer.seconds();
+				t_flux += (t1 - t0);
 
 				iter += 1;
 				config.write_monitor3(t_now, iter, iter_gmres, "iter", config);
 				if (eps_diff / eps_old < config.eps_min)	{break;}
 				//if (eps < config.eps_min)	{break;}
+				if (iter_gmres > 50)	{topc = 1;}
+				
 			}
-			// Optinal hybrid scheme
-			/*if (iter_gmres > 250)	{
-				config.scheme = 1;
-				dt_newton = config.dt;
-				config.dt_init = 0.01;
-				config.dt = config.dt_init;
-				Kokkos::deep_copy(expl.h, nwt.h);
-				Kokkos::deep_copy(expl.wc, nwt.wc);
-				t_switch = t_now;
-				config.dt_max = 1.0;
-			}*/
-			/*if (iter_gmres > 50)	{
-				config.scheme = 2;
-				Kokkos::deep_copy(pca.h, nwt.h);
-				Kokkos::deep_copy(pca.wc, nwt.wc);
-				t_switch = t_now;
-				config.pcg_solve = 1;
-			}*/
 			nwt.update_wc(gw, config);
 			printf("     >>> Newton converges in %d iterations! eps=%f \n", iter,fabs(eps));
 			
@@ -300,30 +329,21 @@ int main(int argc, char** argv)	{
 			i_out += 1;		t_out += config.t_itvl;
 	    }
 	    t_now += config.dt;
-		if (config.scheme == 1)	{
-			//gwf.dt_waco(gw, config);
-			//gwf.update(gw, config);
-		}
-		else if (config.scheme == 2)	{
-			//gwf.dt_waco(gw, config);
-			//gwf.update(gw, config);
-		}
-		else if (config.scheme == 3)	{
+		if (config.scheme == 3)	{
 			gwf.dt_iter(gw, iter, config);
-			//gwf.update(gw, config);
 		}
-		else 	{
+		else if (config.scheme == 4) 	{
 			nwt.dt_iter(gw, iter, config);
-			//gwf.update(gw, config);
 		}
 	    printf(" >>>> Time %f completed!\n\n", t_now);
 	    
 	}
 
-	t_final = clock();
-	t_total = (t_final - t_init)/(float)CLOCKS_PER_SEC/nthreads;
+
+	t_final = timer2.seconds();
+	t_total = (t_final - t_init);
 	printf("\n >>>>> Simulation completed in %f sec! num_sync=%d \n\n",t_total,config.num_sync);
-	config.write_siminfo(t_total, t_matrix/nthreads, t_solver/nthreads, t_k/nthreads, t_flux/nthreads, t_wc/nthreads, t_dt/nthreads, "simtime", config);
+	config.write_siminfo(t_total, t_matrix, t_solver, t_k, t_flux, t_wc, t_dt, "simtime", config);
 	Kokkos::finalize();
 	return 0;
 }

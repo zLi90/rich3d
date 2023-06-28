@@ -23,8 +23,8 @@
 #define TEST_TRACY 0
 #endif
 
-#ifndef TEST_BEEGUM
-#define TEST_BEEGUM 0
+#ifndef ALGO2
+#define ALGO2 0
 #endif
 
 #ifdef __NVCC__
@@ -135,7 +135,7 @@ public:
 	}
 	
 	inline void write_siminfo(double t_tot, double t_mat, double t_sol, double t_k, double t_flux, double t_wc, double t_dt, char *fieldname, Config config)	{
-		double t_oth = t_tot - t_mat - t_sol - t_flux - t_wc - t_dt;
+		double t_oth = t_tot - t_mat - t_sol - t_k - t_flux - t_wc - t_dt;
 		FILE *fp;
 		char filename[100];
 		strcpy(filename, config.fout);
