@@ -84,7 +84,7 @@ public:
 		if (found == 0)	{printf("WARNING: Input field %s not found!\n", field); return 0;}
 		fclose(fid);
 		strcpy(out_str, out);
-		printf(" Reading input from %s: %s = %s",fname,field,out_str);
+		// printf(" Reading input from %s: %s = %s",fname,field,out_str);
 		return strtod(out_str, &ptr);
 	}
 
@@ -133,7 +133,7 @@ public:
 		fprintf(fp, "%8.8f %8.8f %8.8f\n", val1, val2, val3);
 		fclose(fp);
 	}
-	
+
 	inline void write_siminfo(double t_tot, double t_mat, double t_sol, double t_k, double t_flux, double t_wc, double t_dt, char *fieldname, Config config)	{
 		double t_oth = t_tot - t_mat - t_sol - t_k - t_flux - t_wc - t_dt;
 		FILE *fp;

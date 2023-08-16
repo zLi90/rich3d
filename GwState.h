@@ -25,13 +25,17 @@ public:
     // GW variables
     DblArr2 h, q, wc, k;
     DblArr dh;
+    // VG parameters (k, vga, vgn, wcr, wcs)
+    DblArr2 vg;
     // matrix system
     DblArr2 resi, coef;
-    int iter;	// number of solver iterations
+    int iter, liniter;	// number of solver iterations
     int termType;	// if CFl condition is violated and allocation is needed
     std::string initialMode;
     double initialValue;
+    double volume;
 	char finput[200];
+    int ibreak;
     // Allocate state variables for groundwater
     inline void allocate (Config &config) {
         h = DblArr2("h", config.nall, 2);
@@ -40,11 +44,21 @@ public:
         k = DblArr2("k", config.nall, 4);
         q = DblArr2("q", config.nall, 3);
         coef = DblArr2("coef", config.ndom, 8);
-
+        vg = DblArr2("vg", config.ndom, 5);
     }
-    
-    // Initialize the variables 
+
+    // Initialize the variables
     inline void initialize(Config &config)	{
+        // VG parameters
+        // for (int ii = 0; ii < config.ndom; ii++)    {
+        //     vg(ii,0) = config.kz;
+        //     vg(ii,1) = config.vga;
+        //     vg(ii,2) = config.vgn;
+        //     vg(ii,3) = config.wcr;
+        //     vg(ii,4) = config.phi;
+        // }
+
+        // Read initial conditions
     	if (config.init_file == 1)	{
 			strcpy(finput, config.fdir);
 			strcat(finput, "init-h");
@@ -83,15 +97,21 @@ public:
 				wc(idx,1) = h2wc(h(idx,1), config);
 			}
 		}
-		
+
 		apply_BC(config);
-		
+
 		for (int idx = 0; idx < config.nall; idx++)	{
 			h(idx,0) = h(idx,1);
 			wc(idx,0) = wc(idx,1);	wc(idx,2) = wc(idx,1);
 		}
+
+        double vol;
+        Kokkos::parallel_reduce( config.ndom , KOKKOS_LAMBDA (int idx, double &out) {
+            out += wc(idx,1) * config.dx * config.dy * config.dz;
+        } , Kokkos::Sum<double>(vol) );
+        volume = vol;
     }
-    
+
     // Apply boundary conditions
 	inline void apply_BC(Config &config)	{
 		//bc_type = 0 : no flow
@@ -120,7 +140,7 @@ public:
 				default:
 					printf(" ERROR : BC_TYPE must be 0, 1, 2 or 3!\n");
 			}
-		
+
 		}
 		#if TEST_TRACY
 		int idx;

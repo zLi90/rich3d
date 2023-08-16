@@ -17,7 +17,7 @@ public:
             gw.h(idx,0) = gw.h(idx,1);  gw.wc(idx,0) = gw.wc(idx,1);
         });
     }
-    
+
     inline double getErr(GwState &gw, Config &config)	{
     	double dh_max;
     	Kokkos::parallel_reduce(config.ndom, KOKKOS_LAMBDA (int idx, double &tmp) {
@@ -33,9 +33,7 @@ public:
         Get face conductivity
     -------------------------------------------------- */
     inline void face_conductivity(GwState &gw, Config &config)	{
-    	
-    	
-    	
+
         // Get relatively permeability at cell centers
         Kokkos::parallel_for( config.nall , KOKKOS_LAMBDA(int idx) {
         	double m = 1.0 - 1.0/config.vgn;
@@ -79,7 +77,7 @@ public:
 					}
 				}
 			}
-			
+
 			//y
 			if (config.ky != 0.0)	{
 				if (config.bcell(ii,3) == -2)	{
@@ -121,13 +119,13 @@ public:
 				}
 			}
         });
-        
+
 	}
-	
+
 	// An alternative implementation with fewer synchronizations
 	inline void face_conductivity2(GwState &gw, Config &config)	{
-		
-    	
+
+
         Kokkos::parallel_for( config.ndom , KOKKOS_LAMBDA(int idx) {
         	double m = 1.0 - 1.0/config.vgn;
         	double coef = config.rho * GRAV / config.mu;
@@ -135,12 +133,12 @@ public:
         	gw.k(idx,3) = pow(sbar,0.5) * pow(1-pow(1-pow(sbar,1.0/m),m), 2.0);
         	if (gw.k(idx,3) < 0.0)	{gw.k(idx,3) = 0.0;}
         	else if (gw.k(idx,3) > 1.0)	{gw.k(idx,3) = 1.0;}
-        	// x 
+        	// x
         	sbar2 = pow(1.0 + pow(fabs(config.vga*gw.h(config.iP(idx),1)), config.vgn), -m);
         	gw.k(config.iP(idx),3) = pow(sbar2,0.5) * pow(1-pow(1-pow(sbar2,1.0/m),m), 2.0);
         	gw.k(idx,0) = 0.5 * coef * config.kx * (gw.k(idx,3) + gw.k(config.iP(idx),3));
         	if (gw.k(idx,0) > coef*config.kx)	{gw.k(idx,0) = coef*config.kx;}
-        	// y 
+        	// y
         	sbar2 = pow(1.0 + pow(fabs(config.vga*gw.h(config.jP(idx),1)), config.vgn), -m);
         	gw.k(config.jP(idx),3) = pow(sbar2,0.5) * pow(1-pow(1-pow(sbar2,1.0/m),m), 2.0);
         	gw.k(idx,1) = 0.5 * coef * config.ky * (gw.k(idx,3) + gw.k(config.jP(idx),3));
@@ -167,7 +165,7 @@ public:
 				gw.k(config.kM(idx),2) = 0.5 * coef * config.kz * (gw.k(idx,3) + gw.k(config.kM(idx),3));
         	}
     	});
-        
+
 	}
     // /* --------------------------------------------------
     //     End of conductivity block
@@ -199,7 +197,7 @@ public:
 					}
 					break;
 				case 1:
-					if (config.bcell(ii,0) == 2)	{gw.q(idx,0) = config.bcval(ii);}	
+					if (config.bcell(ii,0) == 2)	{gw.q(idx,0) = config.bcval(ii);}
 					else {gw.q(idx,0) = gw.q(idx,0)*2.0;}	break;
 				case -2:
 					if (config.bcell(ii,0) == 2)	{gw.q(idex,1) = config.bcval(ii);}
@@ -218,7 +216,7 @@ public:
 					}
 					break;
 				case 3:
-					if (config.bcell(ii,0) == 2)	{gw.q(idx,2) = config.bcval(ii);}	
+					if (config.bcell(ii,0) == 2)	{gw.q(idx,2) = config.bcval(ii);}
 					else {gw.q(idx,2) = gw.k(idx,2)*(gw.h(idex,1) - gw.h(idx,1)) / (config.dz/2.0) - gw.k(idx,2);}	break;
 			}
         });
@@ -275,7 +273,7 @@ public:
 				gw.coef(idx,7) += config.dt*(-config.bc_val_zm - gw.k(config.kM(idx),2))/config.dz;
 			}
 			else {
-				gw.coef(idx,icol) = gw.coef(idx,icol) * 2.0;	
+				gw.coef(idx,icol) = gw.coef(idx,icol) * 2.0;
 				gw.coef(idx,7) += gw.coef(idx,icol) * gw.h(config.bcell(ii,2),1);
 			}
 		});
@@ -286,7 +284,7 @@ public:
     		/*if (ii < 300 & ii >= 200)	{
     		printf(" (%f,%f,%f,%f,%f,%f,%f) - %f\n",1e8*gw.coef(ii,4),1e8*gw.coef(ii,2),1e8*gw.coef(ii,6),1e8*gw.coef(ii,0),1e8*gw.coef(ii,5),1e8*gw.coef(ii,1),1e8*gw.coef(ii,3),1e8*gw.coef(ii,7));}*/
     	});
-    
+
         // Insert coefficients into Matrix A
         Kokkos::parallel_for( config.ndom , KOKKOS_LAMBDA(int idx) {
         	int irow = A.ptr(idx);
@@ -312,7 +310,7 @@ public:
     //     Get water content
     // -------------------------------------------------- */
     inline void update_wc(GwState &gw, Config &config)	{
-    
+
     	// Explicit update of water content
     	Kokkos::parallel_for( config.ndom , KOKKOS_LAMBDA(int idx) {
     		double coef, qqx, qqy, qqz;
@@ -410,27 +408,33 @@ public:
             double dwc = fabs(gw.wc(idx,1) - gw.wc(idx,0));
 			tmp = (dwc > tmp) ? dwc : tmp;
 		} , Kokkos::Max<double>(dwc_max) );
-    	if (dwc_max > 0.02)	{config.dt = config.dt * 0.5;}
-    	else if (dwc_max > 0.0 & dwc_max < 0.01)	{config.dt = config.dt * 2.0;}
+    	// if (dwc_max > 0.02)	{config.dt = config.dt * 0.5;}
+    	// else if (dwc_max > 0.0 & dwc_max < 0.01)	{config.dt = config.dt * 2.0;}
+
+        config.dt = config.dt * 1.1;
+
     	if (config.dt > config.dt_max)	{config.dt = config.dt_max;}
     	else if (config.dt < config.dt_init)	{config.dt = config.dt_init;}
-    	if (config.dt != dt_old)	{
-    		printf("     >> max dwc = %f, dt is changed to %f sec\n",dwc_max,config.dt);
-    	}
+    	//if (config.dt != dt_old)	{
+    	//	printf("     >> max dwc = %f, dt is changed to %f sec\n",dwc_max,config.dt);
+    	//}
     }
 
     inline void dt_iter(GwState &gw, int iter, Config &config)	{
     	double dt_old;
     	dt_old = config.dt;
-        if (iter < 5)   {config.dt = config.dt * 2.0;}
-        else if (iter > 8)  {config.dt = config.dt * 0.5;}
+        // if (iter < 10)   {config.dt = config.dt * 2.0;}
+        // else if (iter > 15)  {config.dt = config.dt * 0.5;}
+
+        config.dt = config.dt * 1.1;
+
         if (config.dt > config.dt_max)	{config.dt = config.dt_max;}
     	else if (config.dt < config.dt_init)	{config.dt = config.dt_init;}
-    	if (config.dt != dt_old)	{
-    		printf("     >> iter = %f, dt is changed to %f sec\n",iter,config.dt);
-    	}
+    	//if (config.dt != dt_old)	{
+    	//	printf("     >> iter = %f, dt is changed to %f sec\n",iter,config.dt);
+    	//}
     }
-    
+
 
     // /* --------------------------------------------------
     //     End dt update
@@ -453,7 +457,85 @@ public:
     // /* --------------------------------------------------
     //     End eps computation
     // -------------------------------------------------- */
-    
+
+
+    // /* --------------------------------------------------
+    //     Early stopping for the batch tests
+    // -------------------------------------------------- */
+    inline int early_stop(GwState &gw, Config &config) {
+        // Check nans
+        gw.ibreak = 0;
+        for (int idx = 0; idx < config.ndom; idx++) {
+            if (isnan(gw.h(idx,1)) == 1)    {
+                gw.ibreak = 1;
+                break;
+            }
+        }
+        // Check oscillation
+        if (gw.ibreak == 0) {
+            // Non convergence for Picard
+            if (config.scheme == 3 && gw.liniter >= config.iter_max)    {gw.ibreak = 2;}
+            else if (config.scheme == 2)    {
+                double vol, err;
+                Kokkos::parallel_reduce( config.ndom , KOKKOS_LAMBDA (int idx, double &out) {
+                    out += gw.wc(idx,1) * config.dx * config.dy * config.dz;
+                } , Kokkos::Sum<double>(vol) );
+                err = vol - gw.volume + gw.q(config.kM(0),2) * config.dt * config.dx * config.dy;
+                gw.volume = vol;
+                // printf(" ERR = %f\n",fabs(err/gw.volume));
+                if (config.dt > 0.95*config.dt_max && fabs(err/gw.volume) > 5e-4) {
+                    printf(" ERR = %f\n",fabs(err/gw.volume));
+                    gw.ibreak = 2;
+                }
+            }
+
+            // for (int idx = 2; idx < config.ndom-1; idx++) {
+            //     // if (gw.wc(idx,1) > gw.wc(idx-1,1) && gw.wc(idx,1) > gw.wc(idx+1,1)) {
+            //     //     gw.ibreak = 2;
+            //     // }
+            //     // else if (gw.wc(idx,1) < gw.wc(idx-1,1) && gw.wc(idx,1) < gw.wc(idx+1,1)) {
+            //     //     gw.ibreak = 2;
+            //     // }
+            //     // else if (gw.wc(idx,1) < config.phi && gw.wc(idx+1,1) >= config.phi) {
+            //     //     gw.ibreak = 2;
+            //     // }
+            //     if (gw.wc(idx,1) >= config.phi * 0.9999) {
+            //         if (gw.wc(idx-1,1) < config.phi * 0.999)   {gw.ibreak = 2;}
+            //     }
+            // }
+
+        }
+        // Check if infltration reach midpoint
+        if (gw.ibreak == 0) {
+            int idx = config.nz/2;
+            if (gw.wc(idx,1) >= config.wcr + 0.5*(config.phi - config.wcr)) {gw.ibreak = 3;}
+        }
+
+        // Write output file
+        FILE *fp;
+        char fname[100];
+        strcpy(fname, config.fout);
+        strcat(fname, "EndInfo");
+        fp = fopen(fname, "w");
+        fprintf(fp, "END INFO: \n");
+        fprintf(fp, "Ks = %8.8f\n", config.rho * GRAV * config.kz / config.mu);
+        fprintf(fp, "vga = %8.8f\n", config.vga);
+        fprintf(fp, "vgn = %8.8f\n", config.vgn);
+        fprintf(fp, "wcs = %8.8f\n", config.phi);
+        fprintf(fp, "wcr = %8.8f\n", config.wcr);
+        fprintf(fp, "wci = %8.8f\n", config.wc_init);
+        fprintf(fp, "dtMax = %8.8f\n", config.dt_max);
+        fprintf(fp, "Exit Code : %d\n", gw.ibreak);
+        fclose(fp);
+
+        if (gw.ibreak > 0)  {return 1;}
+        else {return 0;}
+    }
+
+    // /* --------------------------------------------------
+    //     End early stop
+    // -------------------------------------------------- */
+
 
 
 };

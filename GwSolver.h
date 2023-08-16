@@ -58,10 +58,10 @@ public:
 			eps = pow(dot(A.r, A.r, A.nrow),0.5);
 			iter += 1;
     	}
-    	printf("  >> CG solver converges in %d iterations! eps = %f\n",iter,eps);
+    	// printf("  >> CG solver converges in %d iterations! eps = %f\n",iter,eps);
     	return iter;
     }
-    
+
     /*
     	GMRES Solver
     */
@@ -73,7 +73,7 @@ public:
     	reset(A.y, gsteps+1);
     	reset(A.c1, gsteps+1);
     	reset(A.c2, gsteps+1);
-   
+
     	decompose(A);
     	get_residual(A);
     	copy_residual(A.v, A.r, A.nrow);
@@ -134,7 +134,7 @@ public:
 		for (int ii = 0; ii < n2; ii++)	{
 			Kokkos::parallel_for(n1 , KOKKOS_LAMBDA(int idom) {x(idom,ii) = 0.0;});
 		}
-		
+
 	}
 
 	/*
@@ -172,7 +172,7 @@ public:
 		} , out);
 		return out;
 	}
-	
+
 	/*
 		kX
 	*/
@@ -217,7 +217,7 @@ public:
 			}
 		});
 	}
-	
+
 	/*
 		Update s and y for GMRES
 	*/
